@@ -5,7 +5,7 @@ use super::statement::Statement;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Expression {
-    Int(usize),
+    Int(i64),
     Identifier(String),
     Prefix {
         rhs: Box<Expression>,
@@ -26,10 +26,14 @@ pub enum Expression {
         parameters: Vec<String>,
         body: Vec<Statement>,
     },
+    Call {
+        function: Box<Expression>,
+        arguments: Vec<Expression>,
+    },
 }
 
-impl From<usize> for Expression {
-    fn from(value: usize) -> Self {
+impl From<i64> for Expression {
+    fn from(value: i64) -> Self {
         Self::Int(value)
     }
 }
@@ -82,6 +86,20 @@ impl Display for Expression {
                 }
 
                 write!(f, "}}")
+            }
+            Expression::Call {
+                function,
+                arguments,
+            } => {
+                write!(
+                    f,
+                    "{function}({})",
+                    arguments
+                        .iter()
+                        .map(|argument| argument.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
             }
         }
     }

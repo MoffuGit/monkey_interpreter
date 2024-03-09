@@ -1,9 +1,10 @@
-use crate::repl::start;
-
 pub mod ast;
+pub mod eval;
 pub mod lexer;
 pub mod parser;
-pub mod repl;
+pub mod relp;
+
+use crate::relp::start;
 
 fn main() {
     println!("Hello! This is the Monkey programming language!");

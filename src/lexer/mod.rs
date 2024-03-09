@@ -50,8 +50,8 @@ impl Lexer {
             self.read_char();
         }
         let int = String::from_iter(&self.input[position..self.position])
-            .parse::<usize>()
-            .expect("parse the string to usize");
+            .parse::<i64>()
+            .expect("parse the string to i64");
         Token::Int(int)
     }
 

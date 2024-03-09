@@ -5,7 +5,7 @@ pub enum Token {
     Illegal,
     Eof,
     Ident(String),
-    Int(usize),
+    Int(i64),
     Percent,
     Assign,
     Plus,

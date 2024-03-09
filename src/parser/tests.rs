@@ -195,7 +195,8 @@ fn test_grouped_expression() {
     let input = " 1 + (2 + 3) + 4;
 (5 + 5) * 2;
 -(5 + 5);
-!(true == true);";
+!(true == true);
+";
     let lexer = Lexer::new(input.chars().collect());
     let mut parser = Parser::new(lexer);
 
@@ -301,5 +302,49 @@ fn test_function_parameters() {
         {
             assert_eq!(parameters, expected)
         }
+    })
+}
+
+#[test]
+fn test_call_expression() {
+    let input = "add(a,b)".chars().collect();
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    parser.check_errors();
+    assert_eq!(
+        program.statements.first(),
+        Some(&Statement::Expression(Expression::Call {
+            function: Box::new(Expression::Identifier("add".to_string())),
+            arguments: vec![
+                Expression::Identifier("a".to_string()),
+                Expression::Identifier("b".to_string())
+            ]
+        }))
+    );
+}
+
+#[test]
+fn test_operator_precedence() {
+    let test_cases = [
+        ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+        (
+            "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+            "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+        ),
+        (
+            "add(a + b + c * d / f + g)",
+            "add((((a + b) + ((c * d) / f)) + g))",
+        ),
+    ];
+
+    test_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+        parser.check_errors();
+        assert_eq!(program.statements[0].to_string(), expected.to_string());
     })
 }

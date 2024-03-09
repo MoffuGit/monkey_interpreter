@@ -24,7 +24,7 @@ impl ParserError {
     }
 }
 
-struct Parser {
+pub struct Parser {
     lexer: Lexer,
     current_token: Token,
     peek_token: Token,
@@ -42,7 +42,7 @@ impl Parser {
             expected, self.peek_token
         )))
     }
-    fn new(mut lexer: Lexer) -> Self {
+    pub fn new(mut lexer: Lexer) -> Self {
         let current_token = lexer.next_token();
         let peek_token = lexer.next_token();
 
@@ -67,7 +67,7 @@ impl Parser {
         Precedence::from(&self.current_token)
     }
 
-    fn check_errors(&self) {
+    pub fn check_errors(&self) {
         if !self.errors.is_empty() {
             println!("parser has {} errors", self.errors.len());
 
@@ -77,7 +77,7 @@ impl Parser {
         }
     }
 
-    fn parse_program(&mut self) -> ast::program::Program {
+    pub fn parse_program(&mut self) -> ast::program::Program {
         let mut program = Program::default();
         while self.current_token != Token::Eof {
             match self.parse_statement() {
@@ -297,6 +297,31 @@ impl Parser {
         Ok(parameters)
     }
 
+    fn parse_call_expression(&mut self, function: Expression) -> Result<Expression, ParserError> {
+        let arguments = self.parse_call_arguments()?;
+        Ok(Expression::Call {
+            function: Box::new(function),
+            arguments,
+        })
+    }
+
+    fn parse_call_arguments(&mut self) -> Result<Vec<Expression>, ParserError> {
+        let mut args = Vec::new();
+        self.next_token();
+        if self.current_token == Token::Rparen {
+            return Ok(args);
+        }
+        args.push(self.parse_expression(Precedence::Lowest)?);
+
+        while self.peek_token == Token::Comma {
+            self.next_token();
+            self.next_token();
+            args.push(self.parse_expression(Precedence::Lowest)?)
+        }
+        self.assert_peek(Token::Rparen)?;
+        Ok(args)
+    }
+
     fn parse_infix_expression(&mut self, lhs: Expression) -> Result<Expression, ParserError> {
         let operator = match &self.current_token {
             Token::Plus => InfixOperator::Add,
@@ -310,6 +335,7 @@ impl Parser {
             Token::Lt => InfixOperator::LessThan,
             Token::LtorEq => InfixOperator::LessThanOrEqual,
             Token::Percent => InfixOperator::Modulo,
+            Token::Lparen => return self.parse_call_expression(lhs),
             value => {
                 return Err(ParserError::new(format!(
                     "This is not a valid InfixOperator: {:?}",
