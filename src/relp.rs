@@ -1,6 +1,6 @@
 use std::io::{self, stdin, stdout, Write};
 
-use crate::eval::Eval;
+use crate::eval::EvalTrait;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 

@@ -4,7 +4,7 @@ use crate::lexer::Lexer;
 use crate::parser::Parser;
 
 use super::value::Value;
-use super::Eval;
+use super::EvalTrait;
 
 #[test]
 fn test_eval_int_expression() {
@@ -178,3 +178,6 @@ fn test_eval_error_handling() {
         }
     });
 }
+
+#[test]
+fn test_eval_let_statement() {}
