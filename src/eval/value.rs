@@ -1,11 +1,23 @@
+use std::cell::RefCell;
 use std::fmt::Display;
+use std::rc::Rc;
 
-#[derive(Debug, PartialEq)]
+use crate::ast::expression::Expression;
+
+use super::environment::Environment;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Int(i64),
     Bool(bool),
     Null,
+    Let,
     Return(Box<Value>),
+    Function {
+        parameters: Vec<String>,
+        body: Expression,
+        env: Rc<RefCell<Environment>>,
+    },
 }
 
 impl Display for Value {
@@ -15,6 +27,10 @@ impl Display for Value {
             Value::Bool(value) => write!(f, "{value}"),
             Value::Null => write!(f, "null"),
             Value::Return(value) => write!(f, "{value}"),
+            Value::Let => write!(f, "let"),
+            Value::Function { parameters, .. } => {
+                write!(f, "fn ({}) {{ ... }}", parameters.join(", "))
+            }
         }
     }
 }
@@ -26,6 +42,8 @@ impl Value {
             Value::Bool(_) => "BOOLEAN".into(),
             Value::Null => "NULL".into(),
             Value::Return(_) => "RETURN".into(),
+            Value::Let => "LET".into(),
+            Value::Function { .. } => "FUNCTION".into(),
         }
     }
 }

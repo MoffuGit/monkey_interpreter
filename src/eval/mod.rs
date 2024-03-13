@@ -1,12 +1,16 @@
 use crate::ast::operator::{InfixOperator, PrefixOperator};
+use std::cell::RefCell;
 use std::fmt::Display;
+use std::rc::Rc;
 
 use crate::ast::expression::Expression;
 use crate::ast::program::Program;
 use crate::ast::statement::Statement;
 
+use self::environment::Environment;
 use self::value::Value;
 
+pub mod environment;
 pub mod value;
 
 #[cfg(test)]
@@ -29,20 +33,109 @@ impl Display for EvalError {
     }
 }
 
-pub struct Eval {}
+#[derive()]
+pub struct Eval {
+    pub env: Rc<RefCell<Environment>>,
+}
 
 impl Eval {
+    pub fn new(env: Rc<RefCell<Environment>>) -> Self {
+        Eval { env }
+    }
+    pub fn eval_program(&mut self, program: Program) -> Result<Value, EvalError> {
+        let mut value = Value::Null;
+
+        for statement in program.statements {
+            value = self.eval_statement(statement)?;
+
+            if let Value::Return(value) = value {
+                return Ok(*value);
+            }
+        }
+        Ok(value)
+    }
+
+    pub fn eval_statement(&mut self, statement: Statement) -> Result<Value, EvalError> {
+        match statement {
+            Statement::Expression(expression) => self.eval_expression(expression),
+            Statement::Let { name, value } => {
+                let value = self.eval_expression(value)?;
+                self.env.borrow_mut().store.insert(name, value.clone());
+                Ok(Value::Let)
+            }
+            Statement::Return(expression) => {
+                Ok(Value::Return(Box::new(self.eval_expression(expression)?)))
+            }
+            Statement::Block(statements) => {
+                let mut value = Value::Null;
+
+                for statement in statements {
+                    value = self.eval_statement(statement)?;
+                    if let Value::Return(_) = value {
+                        return Ok(value);
+                    }
+                }
+                Ok(value)
+            }
+        }
+    }
+
+    pub fn eval_expression(&mut self, expression: Expression) -> Result<Value, EvalError> {
+        match expression {
+            Expression::Int(value) => Ok(Value::Int(value)),
+            Expression::Bool(value) => Ok(Value::Bool(value)),
+            Expression::Prefix { rhs, operator } => {
+                let rhs = self.eval_expression(*rhs)?;
+                self.eval_prefix_expression(operator, rhs)
+            }
+            Expression::Infix { lhs, operator, rhs } => {
+                let lhs = self.eval_expression(*lhs)?;
+                let rhs = self.eval_expression(*rhs)?;
+                self.eval_infix_expression(operator, lhs, rhs)
+            }
+            Expression::If {
+                condition,
+                consequence,
+                alternative,
+            } => {
+                let condition = match self.eval_expression(*condition)? {
+                    Value::Bool(value) => value,
+                    Value::Int(value) => value != 0,
+                    condition => {
+                        return Err(EvalError::new(format!(
+                            "expected bool condition, got: {condition}"
+                        )))
+                    }
+                };
+
+                if condition {
+                    self.eval_statement(Statement::Block(consequence))
+                } else {
+                    alternative.map_or(Ok(Value::Null), |statements| {
+                        self.eval_statement(Statement::Block(statements))
+                    })
+                }
+            }
+            Expression::Identifier(name) => match self.env.borrow_mut().store.get(&name) {
+                Some(value) => Ok(value.clone()),
+                None => Err(EvalError::new(format!("identifier not found: {}", name))),
+            },
+            _ => Ok(Value::Null),
+        }
+    }
+
     pub fn eval_prefix_expression(
+        &self,
         operator: PrefixOperator,
         rhs: Value,
     ) -> Result<Value, EvalError> {
         Ok(match operator {
-            PrefixOperator::Not => Eval::eval_bang(rhs)?,
-            PrefixOperator::Negative => Eval::eval_minus(rhs)?,
+            PrefixOperator::Not => self.eval_bang(rhs)?,
+            PrefixOperator::Negative => self.eval_minus(rhs)?,
         })
     }
 
-    pub fn eval_bang(rhs: Value) -> Result<Value, EvalError> {
+    pub fn eval_bang(&self, rhs: Value) -> Result<Value, EvalError> {
         Ok(Value::Bool(match rhs {
             Value::Int(value) => value == 0,
             Value::Bool(value) => !value,
@@ -56,7 +149,7 @@ impl Eval {
         }))
     }
 
-    pub fn eval_minus(rhs: Value) -> Result<Value, EvalError> {
+    pub fn eval_minus(&self, rhs: Value) -> Result<Value, EvalError> {
         Ok(match rhs {
             Value::Int(value) => Value::Int(-value),
             value => {
@@ -69,13 +162,14 @@ impl Eval {
     }
 
     pub fn eval_infix_expression(
+        &self,
         operator: InfixOperator,
         lhs: Value,
         rhs: Value,
     ) -> Result<Value, EvalError> {
         match (lhs, rhs) {
             (Value::Int(lhs), Value::Int(rhs)) => {
-                Ok(Eval::eval_int_infix_expression(operator, lhs, rhs))
+                Ok(self.eval_int_infix_expression(operator, lhs, rhs))
             }
             (Value::Bool(lhs), Value::Bool(rhs)) => match operator {
                 InfixOperator::Equal => Ok(Value::Bool(lhs == rhs)),
@@ -92,7 +186,7 @@ impl Eval {
         }
     }
 
-    pub fn eval_int_infix_expression(operator: InfixOperator, lhs: i64, rhs: i64) -> Value {
+    pub fn eval_int_infix_expression(&self, operator: InfixOperator, lhs: i64, rhs: i64) -> Value {
         match operator {
             InfixOperator::Add => Value::Int(lhs + rhs),
             InfixOperator::Sub => Value::Int(lhs - rhs),
@@ -105,87 +199,6 @@ impl Eval {
             InfixOperator::Modulo => Value::Int(lhs % rhs),
             InfixOperator::GreaterThanOrEqual => Value::Bool(lhs >= rhs),
             InfixOperator::LessThanOrEqual => Value::Bool(lhs <= rhs),
-        }
-    }
-}
-
-pub trait EvalTrait {
-    fn eval(self) -> Result<Value, EvalError>;
-}
-impl EvalTrait for Program {
-    fn eval(self) -> Result<Value, EvalError> {
-        let mut value = Value::Null;
-
-        for statement in self.statements {
-            value = statement.eval()?;
-
-            if let Value::Return(value) = value {
-                return Ok(*value);
-            }
-        }
-        Ok(value)
-    }
-}
-
-impl EvalTrait for Statement {
-    fn eval(self) -> Result<Value, EvalError> {
-        match self {
-            Statement::Expression(expression) => expression.eval(),
-            Statement::Let { name: _, value: _ } => todo!(),
-            Statement::Return(expression) => Ok(Value::Return(Box::new(expression.eval()?))),
-            Statement::Block(statements) => {
-                let mut value = Value::Null;
-
-                for statement in statements {
-                    value = statement.eval()?;
-                    if let Value::Return(_) = value {
-                        return Ok(value);
-                    }
-                }
-                Ok(value)
-            }
-        }
-    }
-}
-
-impl EvalTrait for Expression {
-    fn eval(self) -> Result<Value, EvalError> {
-        match self {
-            Expression::Int(value) => Ok(Value::Int(value)),
-            Expression::Bool(value) => Ok(Value::Bool(value)),
-            Expression::Prefix { rhs, operator } => {
-                let rhs = rhs.eval()?;
-                Eval::eval_prefix_expression(operator, rhs)
-            }
-            Expression::Infix { lhs, operator, rhs } => {
-                let lhs = lhs.eval()?;
-                let rhs = rhs.eval()?;
-                Eval::eval_infix_expression(operator, lhs, rhs)
-            }
-            Expression::If {
-                condition,
-                consequence,
-                alternative,
-            } => {
-                let condition = match condition.eval()? {
-                    Value::Bool(value) => value,
-                    Value::Int(value) => value != 0,
-                    condition => {
-                        return Err(EvalError::new(format!(
-                            "expected bool condition, got: {condition}"
-                        )))
-                    }
-                };
-
-                if condition {
-                    Statement::Block(consequence).eval()
-                } else {
-                    alternative.map_or(Ok(Value::Null), |statements| {
-                        Statement::Block(statements).eval()
-                    })
-                }
-            }
-            _ => Ok(Value::Null),
         }
     }
 }

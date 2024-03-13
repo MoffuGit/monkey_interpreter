@@ -1,12 +1,18 @@
+use std::cell::RefCell;
 use std::io::{self, stdin, stdout, Write};
+use std::rc::Rc;
 
-use crate::eval::EvalTrait;
+use crate::eval::environment::Environment;
+use crate::eval::value::Value;
+use crate::eval::Eval;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 
 const PROMPT: &str = ">>";
 
 pub fn start() -> io::Result<()> {
+    let env = Environment::new();
+    let mut eval = Eval::new(Rc::new(RefCell::new(env)));
     loop {
         let mut buffer = String::new();
         print!("{PROMPT} ");
@@ -17,8 +23,10 @@ pub fn start() -> io::Result<()> {
 
         let program = parser.parse_program();
         parser.check_errors();
-        if let Ok(evaluated) = program.eval() {
-            println!("{evaluated}");
+        match eval.eval_program(program) {
+            Ok(Value::Let) => (),
+            Ok(evaluated) => println!("{evaluated}"),
+            Err(err) => println!("Err: {err}"),
         }
     }
 }

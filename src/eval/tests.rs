@@ -1,10 +1,13 @@
 use core::panic;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 
+use super::environment::Environment;
 use super::value::Value;
-use super::EvalTrait;
+use super::Eval;
 
 #[test]
 fn test_eval_int_expression() {
@@ -30,8 +33,9 @@ fn test_eval_int_expression() {
         let lexer = Lexer::new(input.chars().collect());
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        let evaluated = program.eval();
-        match evaluated {
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
             Ok(Value::Int(value)) => assert_eq!(&value, expected),
             value => panic!("evaluated expected {expected}, got {value:?}"),
         }
@@ -66,8 +70,9 @@ fn test_eval_bool_expression() {
         let lexer = Lexer::new(input.chars().collect());
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        let evaluated = program.eval();
-        match evaluated {
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
             Ok(Value::Bool(value)) => assert_eq!(&value, expected),
             value => panic!("evaluated expected {expected}, got {value:?}"),
         }
@@ -88,8 +93,9 @@ fn test_eval_bang_operator() {
         let lexer = Lexer::new(input.chars().collect());
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        let evaluated = program.eval();
-        match evaluated {
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
             Ok(Value::Bool(value)) => assert_eq!(&value, expected),
             value => panic!("evaluated expected {expected}, got {value:?}"),
         }
@@ -112,8 +118,9 @@ fn test_eval_if_else_expression() {
         let lexer = Lexer::new(input.chars().collect());
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        let evaluated = program.eval();
-        match evaluated {
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
             Ok(value) => assert_eq!(&value, expected),
             Err(err) => panic!("got an error: {err}"),
         }
@@ -141,8 +148,9 @@ fn test_eval_return_statement() {
         let lexer = Lexer::new(input.chars().collect());
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        let evaluated = program.eval();
-        match evaluated {
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
             Ok(Value::Int(value)) => assert_eq!(value, *expected),
             err => panic!("got an error: {err:?}"),
         }
@@ -165,14 +173,16 @@ fn test_eval_error_handling() {
             "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }",
             "unknown operator: BOOLEAN + BOOLEAN",
         ),
+        ("foobar", "identifier not found: foobar"),
     ];
 
     tests_cases.iter().for_each(|(input, expected)| {
         let lexer = Lexer::new(input.chars().collect());
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        let evaluated = program.eval();
-        match evaluated {
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
             Err(err) => assert_eq!(err.msg, *expected),
             unexpected => panic!("got an error: {unexpected:?}"),
         }
@@ -180,4 +190,22 @@ fn test_eval_error_handling() {
 }
 
 #[test]
-fn test_eval_let_statement() {}
+fn test_eval_let_statement() {
+    let tests_cases = [
+        ("let a = 5; a;", 5),
+        ("let a = 5 * 5; a;", 25),
+        ("let a = 5; let b = a; b;", 5),
+        ("let a = 5; let b = a; let c = a + b + 5; c;", 15),
+    ];
+    tests_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
+            Ok(Value::Int(value)) => assert_eq!(value, *expected),
+            unexpected => panic!("got an error: {unexpected:?}"),
+        }
+    });
+}
