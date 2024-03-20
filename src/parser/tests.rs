@@ -285,6 +285,7 @@ fn test_function_literal() {
 fn test_function_parameters() {
     let test_cases = [
         ("fn() {};", vec![]),
+        ("fn(x) {};", vec!["x".to_string()]),
         (
             "fn(x, foo, bar) {};",
             vec!["x".to_string(), "foo".to_string(), "bar".to_string()],

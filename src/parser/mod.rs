@@ -262,7 +262,7 @@ impl Parser {
         let mut parameters = Vec::new();
 
         self.next_token();
-        if self.peek_token == Token::Rparen {
+        if self.current_token == Token::Rparen {
             return Ok(parameters);
         }
 

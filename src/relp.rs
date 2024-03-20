@@ -25,6 +25,7 @@ pub fn start() -> io::Result<()> {
         parser.check_errors();
         match eval.eval_program(program) {
             Ok(Value::Let) => (),
+            // Ok(Value::Function { .. }) => (),
             Ok(evaluated) => println!("{evaluated}"),
             Err(err) => println!("Err: {err}"),
         }

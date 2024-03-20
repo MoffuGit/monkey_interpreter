@@ -209,3 +209,54 @@ fn test_eval_let_statement() {
         }
     });
 }
+
+#[test]
+fn test_eval_function() {
+    let input = "fn(x) { x + 2; };";
+    let lexer = Lexer::new(input.chars().collect());
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    let env = Environment::new();
+    let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+    parser.check_errors();
+
+    match eval.eval_program(program) {
+        Ok(Value::Function {
+            parameters, body, ..
+        }) => {
+            assert_eq!(parameters, vec!["x"]);
+            assert_eq!(body[0].to_string(), "(x + 2)");
+        }
+        Ok(value) => panic!("expected Value::Function, got: {value:?}"),
+        Err(err) => panic!("got an error: {err:?}"),
+    }
+}
+
+#[test]
+fn test_eval_function_call() {
+    let tests_cases = [
+        ("let identity = fn(x) { x; }; identity(5);", 5),
+        ("let identity = fn(x) { return x; }; identity(5);", 5),
+        ("let double = fn(x) { x * 2; }; double(5);", 10),
+        ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
+        ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
+        ("fn(x) { x; }(5)", 5),
+        (
+            "let newAdder = fn(x) { fn(y) { x + y }; }; let addTwo = newAdder(2); addTwo(2);",
+            4,
+        ),
+        ("let counter = fn(x) { if (x > 100) { return x; } else { let foobar = 9999; counter(x + 1); } }; counter(0);", 101)
+    ];
+
+    tests_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
+            Ok(Value::Int(value)) => assert_eq!(value, *expected),
+            unexpected => panic!("got an error: {unexpected:?}"),
+        }
+    });
+}

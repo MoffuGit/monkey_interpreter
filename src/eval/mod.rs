@@ -55,12 +55,12 @@ impl Eval {
         Ok(value)
     }
 
-    pub fn eval_statement(&mut self, statement: Statement) -> Result<Value, EvalError> {
+    fn eval_statement(&mut self, statement: Statement) -> Result<Value, EvalError> {
         match statement {
             Statement::Expression(expression) => self.eval_expression(expression),
             Statement::Let { name, value } => {
                 let value = self.eval_expression(value)?;
-                self.env.borrow_mut().store.insert(name, value.clone());
+                self.env.borrow_mut().insert(name, &value);
                 Ok(Value::Let)
             }
             Statement::Return(expression) => {
@@ -80,7 +80,7 @@ impl Eval {
         }
     }
 
-    pub fn eval_expression(&mut self, expression: Expression) -> Result<Value, EvalError> {
+    fn eval_expression(&mut self, expression: Expression) -> Result<Value, EvalError> {
         match expression {
             Expression::Int(value) => Ok(Value::Int(value)),
             Expression::Bool(value) => Ok(Value::Bool(value)),
@@ -116,15 +116,56 @@ impl Eval {
                     })
                 }
             }
-            Expression::Identifier(name) => match self.env.borrow_mut().store.get(&name) {
+            Expression::Fn { parameters, body } => Ok(Value::Function {
+                parameters,
+                body,
+                env: Rc::clone(&self.env),
+            }),
+            Expression::Call {
+                function,
+                arguments,
+            } => {
+                let evaluated = self.eval_expression(*function)?;
+                let Value::Function {
+                    parameters,
+                    body,
+                    env,
+                } = evaluated
+                else {
+                    return Err(EvalError::new(format!(
+                        "expected Function, got: {evaluated}"
+                    )));
+                };
+                let args = arguments
+                    .iter()
+                    .map(|arg| self.eval_expression(arg.clone()))
+                    .collect::<Result<Vec<_>, EvalError>>()?;
+                if args.len() != parameters.len() {
+                    return Err(EvalError::new(
+                        "expected parameters: {parameters}, got: {args}",
+                    ));
+                }
+
+                let current_env = Rc::clone(&self.env);
+                let mut local_env = Environment::new_with_outer(Rc::clone(&env));
+
+                parameters
+                    .iter()
+                    .zip(args.iter())
+                    .for_each(|(name, value)| local_env.insert(name, value));
+                self.env = Rc::new(RefCell::new(local_env));
+                let value = self.eval_statement(Statement::Block(body));
+                self.env = current_env;
+                value
+            }
+            Expression::Identifier(name) => match self.env.borrow_mut().get(&name) {
                 Some(value) => Ok(value.clone()),
                 None => Err(EvalError::new(format!("identifier not found: {}", name))),
             },
-            _ => Ok(Value::Null),
         }
     }
 
-    pub fn eval_prefix_expression(
+    fn eval_prefix_expression(
         &self,
         operator: PrefixOperator,
         rhs: Value,
@@ -135,7 +176,7 @@ impl Eval {
         })
     }
 
-    pub fn eval_bang(&self, rhs: Value) -> Result<Value, EvalError> {
+    fn eval_bang(&self, rhs: Value) -> Result<Value, EvalError> {
         Ok(Value::Bool(match rhs {
             Value::Int(value) => value == 0,
             Value::Bool(value) => !value,
@@ -149,7 +190,7 @@ impl Eval {
         }))
     }
 
-    pub fn eval_minus(&self, rhs: Value) -> Result<Value, EvalError> {
+    fn eval_minus(&self, rhs: Value) -> Result<Value, EvalError> {
         Ok(match rhs {
             Value::Int(value) => Value::Int(-value),
             value => {
@@ -161,7 +202,7 @@ impl Eval {
         })
     }
 
-    pub fn eval_infix_expression(
+    fn eval_infix_expression(
         &self,
         operator: InfixOperator,
         lhs: Value,
@@ -186,7 +227,7 @@ impl Eval {
         }
     }
 
-    pub fn eval_int_infix_expression(&self, operator: InfixOperator, lhs: i64, rhs: i64) -> Value {
+    fn eval_int_infix_expression(&self, operator: InfixOperator, lhs: i64, rhs: i64) -> Value {
         match operator {
             InfixOperator::Add => Value::Int(lhs + rhs),
             InfixOperator::Sub => Value::Int(lhs - rhs),

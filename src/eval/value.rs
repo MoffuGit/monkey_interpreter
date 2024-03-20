@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::fmt::Display;
 use std::rc::Rc;
 
-use crate::ast::expression::Expression;
+use crate::ast::statement::Statement;
 
 use super::environment::Environment;
 
@@ -15,7 +15,7 @@ pub enum Value {
     Return(Box<Value>),
     Function {
         parameters: Vec<String>,
-        body: Expression,
+        body: Vec<Statement>,
         env: Rc<RefCell<Environment>>,
     },
 }
@@ -28,8 +28,16 @@ impl Display for Value {
             Value::Null => write!(f, "null"),
             Value::Return(value) => write!(f, "{value}"),
             Value::Let => write!(f, "let"),
-            Value::Function { parameters, .. } => {
-                write!(f, "fn ({}) {{ ... }}", parameters.join(", "))
+            Value::Function {
+                parameters, body, ..
+            } => {
+                write!(f, "fn ({}) {{", parameters.join(", "))?;
+
+                for statement in body {
+                    write!(f, "{statement}")?;
+                }
+
+                write!(f, "}}")
             }
         }
     }
