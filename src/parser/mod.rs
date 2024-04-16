@@ -156,11 +156,13 @@ impl Parser {
 
     fn parse_prefix(&mut self) -> Result<Expression, ParserError> {
         match &self.current_token {
+            Token::String(string) => Ok(Expression::String(string.to_string())),
             Token::Ident(value) => Ok(Expression::Identifier(value.to_owned())),
             Token::Int(value) => Ok(Expression::Int(value.to_owned())),
             Token::False => Ok(Expression::Bool(false)),
             Token::True => Ok(Expression::Bool(true)),
             Token::Minus | Token::Bang => self.parse_prefix_expression(),
+            Token::Lbracket => self.parse_array_expression(),
             Token::Lparen => self.parse_grouped_expression(),
             Token::If => self.parse_if_expression(),
             Token::Function => self.parse_function_literal(),
@@ -169,6 +171,30 @@ impl Parser {
                 token
             ))),
         }
+    }
+
+    fn parse_array_expression(&mut self) -> Result<Expression, ParserError> {
+        let mut list: Vec<Expression> = vec![];
+
+        if self.peek_token == Token::Eof {
+            self.next_token();
+            return Ok(Expression::Array(list));
+        }
+
+        self.next_token();
+        list.push(self.parse_expression(Precedence::Lowest)?);
+
+        while self.peek_token == Token::Comma {
+            self.next_token();
+            self.next_token();
+            list.push(self.parse_expression(Precedence::Lowest)?)
+        }
+
+        self.next_token();
+
+        self.assert_peek(Token::Eof)?;
+
+        Ok(Expression::Array(list))
     }
 
     fn parse_grouped_expression(&mut self) -> Result<Expression, ParserError> {

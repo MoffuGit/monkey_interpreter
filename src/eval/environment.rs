@@ -35,8 +35,17 @@ impl Environment {
         }
     }
 
-    pub fn insert(&mut self, name: impl Into<String>, value: &Value) {
-        self.store.insert(name.into(), value.clone());
+    pub fn insert(&mut self, name: impl Into<String>, value: Value) {
+        self.store.insert(name.into(), value);
+    }
+}
+
+impl From<HashMap<String, Value>> for Environment {
+    fn from(value: HashMap<String, Value>) -> Self {
+        Environment {
+            store: value,
+            outer: None,
+        }
     }
 }
 

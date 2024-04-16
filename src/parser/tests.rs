@@ -1,3 +1,5 @@
+use core::panic;
+
 use super::*;
 
 #[test]
@@ -348,4 +350,35 @@ fn test_operator_precedence() {
         parser.check_errors();
         assert_eq!(program.statements[0].to_string(), expected.to_string());
     })
+}
+
+#[test]
+fn test_string_expression() {
+    let test_cases = [(r#""foobar""#, "foobar")];
+
+    test_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+        parser.check_errors();
+        assert_eq!(program.statements[0].to_string(), expected.to_string());
+    })
+}
+
+#[test]
+fn test_array() {
+    let input = "[1, 2 * 2, 3 + 3]".chars().collect();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    parser.check_errors();
+    match program.statements.first() {
+        Some(Statement::Expression(Expression::Array(values))) => {
+            assert_eq!(values[0], Expression::Int(1));
+        }
+        value => panic!("expected Array got: {:?}", value),
+    }
 }

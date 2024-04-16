@@ -5,6 +5,7 @@ pub enum Token {
     Illegal,
     Eof,
     Ident(String),
+    String(String),
     Int(i64),
     Percent,
     Assign,
@@ -32,6 +33,8 @@ pub enum Token {
     Return,
     Eq,
     NotEq,
+    Lbracket,
+    Rbracket,
 }
 
 impl Debug for Token {
@@ -54,6 +57,7 @@ impl Debug for Token {
             Token::Eof => write!(f, "Eof"),
             Token::Ident(ident) => write!(f, "Ident: {}", ident),
             Token::Int(int) => write!(f, "Int: {}", int),
+            Token::String(string) => write!(f, "String: {}", string),
             Token::Assign => write!(f, "Assign"),
             Token::Plus => write!(f, "Plus"),
             Token::Comma => write!(f, "Comma"),
@@ -67,6 +71,8 @@ impl Debug for Token {
             Token::Percent => write!(f, "Percent"),
             Token::LtorEq => write!(f, "Less than or Equal"),
             Token::GtorEq => write!(f, "Greater than or Equal"),
+            Token::Lbracket => write!(f, "Lbracket"),
+            Token::Rbracket => write!(f, "Rbracket"),
         }
     }
 }

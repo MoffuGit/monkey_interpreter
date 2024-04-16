@@ -7,6 +7,7 @@ use super::statement::Statement;
 pub enum Expression {
     Int(i64),
     Identifier(String),
+    String(String),
     Prefix {
         rhs: Box<Expression>,
         operator: PrefixOperator,
@@ -30,6 +31,7 @@ pub enum Expression {
         function: Box<Expression>,
         arguments: Vec<Expression>,
     },
+    Array(Vec<Expression>),
 }
 
 impl From<i64> for Expression {
@@ -100,6 +102,20 @@ impl Display for Expression {
                         .collect::<Vec<String>>()
                         .join(", ")
                 )
+            }
+            Expression::String(string) => write!(f, "{}", string),
+            Expression::Array(expressions) => {
+                write!(f, "[")?;
+                write!(
+                    f,
+                    "{}",
+                    expressions
+                        .iter()
+                        .map(|argument| argument.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )?;
+                write!(f, "]")
             }
         }
     }

@@ -5,6 +5,7 @@ use std::rc::Rc;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 
+use super::builtin::new_builtins;
 use super::environment::Environment;
 use super::value::Value;
 use super::Eval;
@@ -74,6 +75,38 @@ fn test_eval_bool_expression() {
         let mut eval = Eval::new(Rc::new(RefCell::new(env)));
         match eval.eval_program(program) {
             Ok(Value::Bool(value)) => assert_eq!(&value, expected),
+            value => panic!("evaluated expected {expected}, got {value:?}"),
+        }
+    })
+}
+
+#[test]
+fn test_string_expression() {
+    let tests_cases = [(r#""foobar""#, "foobar"), (r#""foo bar""#, "foo bar")];
+    tests_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
+            Ok(Value::String(string)) => assert_eq!(string, expected.to_string()),
+            value => panic!("evaluated expected {expected}, got {value:?}"),
+        }
+    })
+}
+
+#[test]
+fn test_string_concatenation() {
+    let tests_cases = [(r#""Hello" + " " + "World!""#, "Hello World!")];
+    tests_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+        let env = Environment::new();
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
+            Ok(Value::String(string)) => assert_eq!(string, expected.to_string()),
             value => panic!("evaluated expected {expected}, got {value:?}"),
         }
     })
@@ -160,6 +193,14 @@ fn test_eval_return_statement() {
 #[test]
 fn test_eval_error_handling() {
     let tests_cases = [
+        (
+            r#"len(1)"#,
+            r#"argument to "len" not supported: got INTEGER"#,
+        ),
+        (
+            r#"len("one", "two")"#,
+            "wrong number of arguments, got=2, want=1",
+        ),
         ("5 + true;", "type mismatch: INTEGER + BOOLEAN"),
         ("5 + true; 5;", "type mismatch: INTEGER + BOOLEAN"),
         ("-true", "unknown operator: -BOOLEAN"),
@@ -174,13 +215,14 @@ fn test_eval_error_handling() {
             "unknown operator: BOOLEAN + BOOLEAN",
         ),
         ("foobar", "identifier not found: foobar"),
+        (r#""Hello" - "World""#, "unknown operator: STRING - STRING"),
     ];
 
     tests_cases.iter().for_each(|(input, expected)| {
         let lexer = Lexer::new(input.chars().collect());
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
-        let env = Environment::new();
+        let env = Environment::from(new_builtins());
         let mut eval = Eval::new(Rc::new(RefCell::new(env)));
         match eval.eval_program(program) {
             Err(err) => assert_eq!(err.msg, *expected),
@@ -260,3 +302,46 @@ fn test_eval_function_call() {
         }
     });
 }
+
+#[test]
+fn test_builtin_functions() {
+    let tests_cases = [
+        (r#"len("")"#, 0),
+        (r#"len("four")"#, 4),
+        (r#"len("hello world")"#, 11),
+    ];
+
+    tests_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+        let env = Environment::from(new_builtins());
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
+            Ok(Value::Int(value)) => assert_eq!(value, *expected),
+            unexpected => panic!("got an error: {unexpected:?}"),
+        }
+    });
+}
+
+// #[test]
+// fn test_eval_array() {
+//     let input = "[1, 2 * 2, 3 + 3]";
+//     let lexer = Lexer::new(input.chars().collect());
+//     let mut parser = Parser::new(lexer);
+//     let program = parser.parse_program();
+//     let env = Environment::new();
+//     let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+//     parser.check_errors();
+//
+//     match eval.eval_program(program) {
+//         Ok(Value::Function {
+//             parameters, body, ..
+//         }) => {
+//             assert_eq!(parameters, vec!["x"]);
+//             assert_eq!(body[0].to_string(), "(x + 2)");
+//         }
+//         Ok(value) => panic!("expected Value::Function, got: {value:?}"),
+//         Err(err) => panic!("got an error: {err:?}"),
+//     }
+// }

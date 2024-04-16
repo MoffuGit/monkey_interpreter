@@ -1,6 +1,9 @@
 pub mod token;
 use token::Token;
 
+#[cfg(test)]
+mod tests;
+
 pub struct Lexer {
     input: Vec<char>,
     position: usize,
@@ -80,6 +83,21 @@ impl Lexer {
         }
     }
 
+    pub fn read_string(&mut self) -> Token {
+        self.read_char();
+        let position = self.position;
+
+        loop {
+            if self.ch == '"' || self.ch == '\0' {
+                break;
+            }
+            self.read_char();
+        }
+
+        self.read_char();
+        Token::String(self.input[position..self.position - 1].iter().collect())
+    }
+
     pub fn next_token(&mut self) -> Token {
         self.skip_withespace();
         let token = match self.ch {
@@ -126,7 +144,10 @@ impl Lexer {
             ',' => Token::Comma,
             '{' => Token::Lbrace,
             '}' => Token::Rbrace,
+            '[' => Token::Lbracket,
+            ']' => Token::Rbracket,
             '\0' => Token::Eof,
+            '"' => return self.read_string(),
             _ if self.is_digit() => {
                 return self.read_digit();
             }
@@ -137,173 +158,5 @@ impl Lexer {
         };
         self.read_char();
         token
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_lexer1() {
-        let input = "=+(){},;";
-        let expected = vec![
-            Token::Assign,
-            Token::Plus,
-            Token::Lparen,
-            Token::Rparen,
-            Token::Lbrace,
-            Token::Rbrace,
-            Token::Comma,
-            Token::Semicolon,
-            Token::Eof,
-        ];
-        let mut lexer = Lexer::new(input.chars().collect());
-        for expect in expected {
-            let token = lexer.next_token();
-            assert_eq!(expect, token);
-        }
-    }
-
-    #[test]
-    fn test_lexer2() {
-        let input = "let five = 5;
-let ten = 10;
-
-let add = fn(x, y) {
-    x + y;
-};
-
-let result = add(five, ten);
-";
-        let expected = vec![
-            Token::Let,
-            Token::Ident("five".into()),
-            Token::Assign,
-            Token::Int(5),
-            Token::Semicolon,
-            Token::Let,
-            Token::Ident("ten".into()),
-            Token::Assign,
-            Token::Int(10),
-            Token::Semicolon,
-            Token::Let,
-            Token::Ident("add".into()),
-            Token::Assign,
-            Token::Function,
-            Token::Lparen,
-            Token::Ident("x".into()),
-            Token::Comma,
-            Token::Ident("y".into()),
-            Token::Rparen,
-            Token::Lbrace,
-            Token::Ident("x".into()),
-            Token::Plus,
-            Token::Ident("y".into()),
-            Token::Semicolon,
-            Token::Rbrace,
-            Token::Semicolon,
-            Token::Let,
-            Token::Ident("result".into()),
-            Token::Assign,
-            Token::Ident("add".into()),
-            Token::Lparen,
-            Token::Ident("five".into()),
-            Token::Comma,
-            Token::Ident("ten".into()),
-            Token::Rparen,
-            Token::Semicolon,
-        ];
-
-        let mut lexer = Lexer::new(input.chars().collect());
-        for expect in expected {
-            let token = lexer.next_token();
-            assert_eq!(expect, token);
-        }
-    }
-
-    #[test]
-    fn test_lexer3() {
-        let input = "!-/*5;
-5 < 10 > 5;
-";
-        let expected = vec![
-            Token::Bang,
-            Token::Minus,
-            Token::Slash,
-            Token::Asterisk,
-            Token::Int(5),
-            Token::Semicolon,
-            Token::Int(5),
-            Token::Lt,
-            Token::Int(10),
-            Token::Gt,
-            Token::Int(5),
-            Token::Semicolon,
-            Token::Eof,
-        ];
-        let mut lexer = Lexer::new(input.chars().collect());
-        for expect in expected {
-            let token = lexer.next_token();
-            assert_eq!(expect, token);
-        }
-    }
-
-    #[test]
-    fn test_lexer4() {
-        let input = "if (5 < 10) {
-    return true;
-} else {
-    return false;
-};
-";
-        let expected = vec![
-            Token::If,
-            Token::Lparen,
-            Token::Int(5),
-            Token::Lt,
-            Token::Int(10),
-            Token::Rparen,
-            Token::Lbrace,
-            Token::Return,
-            Token::True,
-            Token::Semicolon,
-            Token::Rbrace,
-            Token::Else,
-            Token::Lbrace,
-            Token::Return,
-            Token::False,
-            Token::Semicolon,
-            Token::Rbrace,
-            Token::Semicolon,
-        ];
-        let mut lexer = Lexer::new(input.chars().collect());
-        for expect in expected {
-            let token = lexer.next_token();
-            assert_eq!(expect, token);
-        }
-    }
-
-    #[test]
-    fn test_lexer5() {
-        let input = "10 == 10;
-10 != 9;";
-
-        let expected = vec![
-            Token::Int(10),
-            Token::Eq,
-            Token::Int(10),
-            Token::Semicolon,
-            Token::Int(10),
-            Token::NotEq,
-            Token::Int(9),
-            Token::Semicolon,
-        ];
-
-        let mut lexer = Lexer::new(input.chars().collect());
-        for expect in expected {
-            let token = lexer.next_token();
-            assert_eq!(expect, token);
-        }
     }
 }

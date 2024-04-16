@@ -1,3 +1,4 @@
+use crate::eval::builtin::new_builtins;
 use std::cell::RefCell;
 use std::io::{self, stdin, stdout, Write};
 use std::rc::Rc;
@@ -11,7 +12,7 @@ use crate::parser::Parser;
 const PROMPT: &str = ">>";
 
 pub fn start() -> io::Result<()> {
-    let env = Environment::new();
+    let env = Environment::from(new_builtins());
     let mut eval = Eval::new(Rc::new(RefCell::new(env)));
     loop {
         let mut buffer = String::new();

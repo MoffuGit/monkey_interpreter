@@ -5,19 +5,25 @@ use std::rc::Rc;
 use crate::ast::statement::Statement;
 
 use super::environment::Environment;
+use super::EvalError;
+
+type BuiltinFuncion = fn(Vec<Value>) -> Result<Value, EvalError>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Int(i64),
     Bool(bool),
+    String(String),
     Null,
     Let,
     Return(Box<Value>),
+    Array(Vec<Value>),
     Function {
         parameters: Vec<String>,
         body: Vec<Statement>,
         env: Rc<RefCell<Environment>>,
     },
+    Builtin(BuiltinFuncion),
 }
 
 impl Display for Value {
@@ -39,6 +45,9 @@ impl Display for Value {
 
                 write!(f, "}}")
             }
+            Value::String(string) => write!(f, r#""{}""#, string),
+            Value::Builtin(_) => write!(f, "[builtin function]"),
+            Value::Array(value) => write!(f, "{value:?}"),
         }
     }
 }
@@ -52,6 +61,9 @@ impl Value {
             Value::Return(_) => "RETURN".into(),
             Value::Let => "LET".into(),
             Value::Function { .. } => "FUNCTION".into(),
+            Value::String(_) => "STRING".into(),
+            Value::Builtin(_) => "BUILTIN".into(),
+            Value::Array(_) => "ARRAY".into(),
         }
     }
 }

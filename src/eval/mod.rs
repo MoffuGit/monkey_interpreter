@@ -10,6 +10,7 @@ use crate::ast::statement::Statement;
 use self::environment::Environment;
 use self::value::Value;
 
+pub mod builtin;
 pub mod environment;
 pub mod value;
 
@@ -60,7 +61,7 @@ impl Eval {
             Statement::Expression(expression) => self.eval_expression(expression),
             Statement::Let { name, value } => {
                 let value = self.eval_expression(value)?;
-                self.env.borrow_mut().insert(name, &value);
+                self.env.borrow_mut().insert(name, value.clone());
                 Ok(Value::Let)
             }
             Statement::Return(expression) => {
@@ -126,20 +127,24 @@ impl Eval {
                 arguments,
             } => {
                 let evaluated = self.eval_expression(*function)?;
-                let Value::Function {
-                    parameters,
-                    body,
-                    env,
-                } = evaluated
-                else {
-                    return Err(EvalError::new(format!(
-                        "expected Function, got: {evaluated}"
-                    )));
-                };
                 let args = arguments
                     .iter()
                     .map(|arg| self.eval_expression(arg.clone()))
                     .collect::<Result<Vec<_>, EvalError>>()?;
+                let (parameters, body, env) = match evaluated {
+                    Value::Function {
+                        parameters,
+                        body,
+                        env,
+                    } => (parameters, body, env),
+                    Value::Builtin(f) => return f(args),
+                    evaluated => {
+                        return Err(EvalError::new(format!(
+                            "not a function: {}",
+                            evaluated.as_type()
+                        )))
+                    }
+                };
                 if args.len() != parameters.len() {
                     return Err(EvalError::new(
                         "expected parameters: {parameters}, got: {args}",
@@ -152,7 +157,7 @@ impl Eval {
                 parameters
                     .iter()
                     .zip(args.iter())
-                    .for_each(|(name, value)| local_env.insert(name, value));
+                    .for_each(|(name, value)| local_env.insert(name, value.clone()));
                 self.env = Rc::new(RefCell::new(local_env));
                 let value = self.eval_statement(Statement::Block(body));
                 self.env = current_env;
@@ -162,6 +167,8 @@ impl Eval {
                 Some(value) => Ok(value.clone()),
                 None => Err(EvalError::new(format!("identifier not found: {}", name))),
             },
+            Expression::String(string) => Ok(Value::String(string)),
+            Expression::Array(expressions) => todo!(),
         }
     }
 
@@ -217,6 +224,12 @@ impl Eval {
                 InfixOperator::NotEqual => Ok(Value::Bool(lhs != rhs)),
                 operator => Err(EvalError::new(format!(
                     "unknown operator: BOOLEAN {operator} BOOLEAN"
+                ))),
+            },
+            (Value::String(lhs), Value::String(rhs)) => match operator {
+                InfixOperator::Add => Ok(Value::String(lhs + &rhs)),
+                _ => Err(EvalError::new(format!(
+                    "unknown operator: STRING {operator} STRING"
                 ))),
             },
             (lhs, rhs) => Err(EvalError::new(format!(
