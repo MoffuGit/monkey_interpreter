@@ -159,6 +159,7 @@ impl Lexer {
                 '[' => Token::Lbracket,
                 ']' => Token::Rbracket,
                 '\0' => Token::Eof,
+                ':' => Token::Colon,
                 '"' => return (self.read_string(), (self.line, self.column)),
                 _ if self.is_digit() => {
                     return (self.read_digit(), (self.line, self.column));

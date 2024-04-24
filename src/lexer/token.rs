@@ -35,6 +35,7 @@ pub enum Token {
     NotEq,
     Lbracket,
     Rbracket,
+    Colon,
 }
 
 impl Debug for Token {
@@ -73,6 +74,7 @@ impl Debug for Token {
             Token::GtorEq => write!(f, "Greater than or Equal"),
             Token::Lbracket => write!(f, "Lbracket"),
             Token::Rbracket => write!(f, "Rbracket"),
+            Token::Colon => write!(f, "Colon"),
         }
     }
 }

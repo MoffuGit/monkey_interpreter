@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrefixOperator {
     Not,
     Negative,
@@ -15,7 +15,7 @@ impl Display for PrefixOperator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InfixOperator {
     Add,
     Sub,

@@ -180,6 +180,7 @@ impl Eval {
 
                 self.eval_index_expression(lhs, index)
             }
+            Expression::Hash(_) => todo!(),
         }
     }
 

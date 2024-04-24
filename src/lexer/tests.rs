@@ -17,7 +17,7 @@ fn test_lexer1() {
     let mut lexer = Lexer::new(input.chars().collect());
     for expect in expected {
         let token = lexer.next_token();
-        assert_eq!(expect, token);
+        assert_eq!(expect, token.0);
     }
 }
 
@@ -74,7 +74,7 @@ let result = add(five, ten);
     let mut lexer = Lexer::new(input.chars().collect());
     for expect in expected {
         let token = lexer.next_token();
-        assert_eq!(expect, token);
+        assert_eq!(expect, token.0);
     }
 }
 
@@ -101,7 +101,7 @@ fn test_lexer3() {
     let mut lexer = Lexer::new(input.chars().collect());
     for expect in expected {
         let token = lexer.next_token();
-        assert_eq!(expect, token);
+        assert_eq!(expect, token.0);
     }
 }
 
@@ -136,7 +136,7 @@ fn test_lexer4() {
     let mut lexer = Lexer::new(input.chars().collect());
     for expect in expected {
         let token = lexer.next_token();
-        assert_eq!(expect, token);
+        assert_eq!(expect, token.0);
     }
 }
 
@@ -148,6 +148,7 @@ fn test_lexer5() {
 "foobar";
 "foo bar";
 [1, 2];
+{"foo": "bar"};
 "#;
 
     let expected = vec![
@@ -169,12 +170,18 @@ fn test_lexer5() {
         Token::Int(2),
         Token::Rbracket,
         Token::Semicolon,
+        Token::Lbrace,
+        Token::String("foo".into()),
+        Token::Colon,
+        Token::String("bar".into()),
+        Token::Rbrace,
+        Token::Semicolon,
         Token::Eof,
     ];
 
     let mut lexer = Lexer::new(input.chars().collect());
     for expect in expected {
         let token = lexer.next_token();
-        assert_eq!(expect, token);
+        assert_eq!(expect, token.0);
     }
 }

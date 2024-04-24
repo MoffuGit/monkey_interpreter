@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use super::expression::Expression;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub enum Statement {
     Expression(Expression),
     Let { name: String, value: Expression },

@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use super::statement::Statement;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub enum Expression {
     Int(i64),
     Identifier(String),
@@ -36,6 +36,7 @@ pub enum Expression {
         lhs: Box<Expression>,
         index: Box<Expression>,
     },
+    Hash(Vec<(Expression, Expression)>),
 }
 
 impl From<i64> for Expression {
@@ -123,6 +124,13 @@ impl Display for Expression {
             }
             Expression::Index { lhs, index } => {
                 write!(f, "({}[{}])", lhs, index)
+            }
+            Expression::Hash(hash) => {
+                write!(f, "{{")?;
+                for (k, v) in hash {
+                    write!(f, "{k} => {v},")?;
+                }
+                write!(f, "}}")
             }
         }
     }
