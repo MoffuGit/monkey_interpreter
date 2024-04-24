@@ -340,6 +340,14 @@ fn test_operator_precedence() {
             "add(a + b + c * d / f + g)",
             "add((((a + b) + ((c * d) / f)) + g))",
         ),
+        (
+            "a * [1,2,3,4][b * c] * d",
+            "((a * ([1, 2, 3, 4][(b * c)])) * d)",
+        ),
+        (
+            "add(a * b[2], b[1], 2 * [1, 2][1])",
+            "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))",
+        ),
     ];
 
     test_cases.iter().for_each(|(input, expected)| {
@@ -378,6 +386,34 @@ fn test_array() {
     match program.statements.first() {
         Some(Statement::Expression(Expression::Array(values))) => {
             assert_eq!(values[0], Expression::Int(1));
+        }
+        value => panic!("expected Array got: {:?}", value),
+    }
+}
+
+#[test]
+fn test_index_expression() {
+    let input = "myArray[1 + 1]".chars().collect();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    parser.check_errors();
+    match program.statements.first() {
+        Some(Statement::Expression(Expression::Index { lhs, index })) => {
+            assert_eq!(
+                lhs,
+                &Box::new(Expression::Identifier("myArray".to_string()))
+            );
+            assert_eq!(
+                index,
+                &Box::new(Expression::Infix {
+                    lhs: Box::new(Expression::Int(1)),
+                    operator: InfixOperator::Add,
+                    rhs: Box::new(Expression::Int(1))
+                })
+            )
         }
         value => panic!("expected Array got: {:?}", value),
     }

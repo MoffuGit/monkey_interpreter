@@ -146,9 +146,9 @@ impl Eval {
                     }
                 };
                 if args.len() != parameters.len() {
-                    return Err(EvalError::new(
-                        "expected parameters: {parameters}, got: {args}",
-                    ));
+                    return Err(EvalError::new(format!(
+                        "expected parameters: {parameters:?}, got: {args:?}",
+                    )));
                 }
 
                 let current_env = Rc::clone(&self.env);
@@ -168,8 +168,40 @@ impl Eval {
                 None => Err(EvalError::new(format!("identifier not found: {}", name))),
             },
             Expression::String(string) => Ok(Value::String(string)),
-            Expression::Array(expressions) => todo!(),
+            Expression::Array(elements) => Ok(Value::Array(
+                elements
+                    .iter()
+                    .map(|element| self.eval_expression(element.clone()))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            Expression::Index { lhs, index } => {
+                let lhs = self.eval_expression(*lhs)?;
+                let index = self.eval_expression(*index)?;
+
+                self.eval_index_expression(lhs, index)
+            }
         }
+    }
+
+    fn eval_index_expression(&mut self, lhs: Value, index: Value) -> Result<Value, EvalError> {
+        match (lhs, index) {
+            (Value::Array(array), Value::Int(idx)) => self.eval_array_index_expression(array, idx),
+            (lhs, _) => Err(EvalError::new(format!(
+                "index operator not supported: {lhs}"
+            ))),
+        }
+    }
+
+    fn eval_array_index_expression(
+        &mut self,
+        array: Vec<Value>,
+        index: i64,
+    ) -> Result<Value, EvalError> {
+        if index < 0 || index > (array.len() - 1) as i64 {
+            return Err(EvalError::new("index out of bounds"));
+        }
+
+        Ok(array.get(index as usize).unwrap().clone())
     }
 
     fn eval_prefix_expression(

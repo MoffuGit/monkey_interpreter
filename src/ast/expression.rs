@@ -32,6 +32,10 @@ pub enum Expression {
         arguments: Vec<Expression>,
     },
     Array(Vec<Expression>),
+    Index {
+        lhs: Box<Expression>,
+        index: Box<Expression>,
+    },
 }
 
 impl From<i64> for Expression {
@@ -116,6 +120,9 @@ impl Display for Expression {
                         .join(", ")
                 )?;
                 write!(f, "]")
+            }
+            Expression::Index { lhs, index } => {
+                write!(f, "({}[{}])", lhs, index)
             }
         }
     }

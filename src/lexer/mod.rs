@@ -1,4 +1,5 @@
 pub mod token;
+
 use token::Token;
 
 #[cfg(test)]
@@ -8,6 +9,8 @@ pub struct Lexer {
     input: Vec<char>,
     position: usize,
     read_position: usize,
+    column: usize,
+    line: usize,
     ch: char,
 }
 
@@ -16,6 +19,8 @@ impl Lexer {
         let mut lexer = Self {
             input,
             position: 0,
+            column: 0,
+            line: 1,
             read_position: 0,
             ch: '\0',
         };
@@ -30,6 +35,12 @@ impl Lexer {
         };
         self.position = self.read_position;
         self.read_position += 1;
+        if let '\n' = self.ch {
+            self.column = 0;
+            self.line += 1;
+        } else {
+            self.column += 1;
+        }
     }
 
     fn peak_char(&self) -> char {
@@ -98,64 +109,67 @@ impl Lexer {
         Token::String(self.input[position..self.position - 1].iter().collect())
     }
 
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> (Token, (usize, usize)) {
         self.skip_withespace();
-        let token = match self.ch {
-            '=' => {
-                if self.peak_char() == '=' {
-                    self.read_char();
-                    Token::Eq
-                } else {
-                    Token::Assign
+        let token = (
+            match self.ch {
+                '=' => {
+                    if self.peak_char() == '=' {
+                        self.read_char();
+                        Token::Eq
+                    } else {
+                        Token::Assign
+                    }
                 }
-            }
-            '+' => Token::Plus,
-            '-' => Token::Minus,
-            '!' => {
-                if self.peak_char() == '=' {
-                    self.read_char();
-                    Token::NotEq
-                } else {
-                    Token::Bang
+                '+' => Token::Plus,
+                '-' => Token::Minus,
+                '!' => {
+                    if self.peak_char() == '=' {
+                        self.read_char();
+                        Token::NotEq
+                    } else {
+                        Token::Bang
+                    }
                 }
-            }
-            '/' => Token::Slash,
-            '*' => Token::Asterisk,
-            '%' => Token::Percent,
-            '>' => {
-                if self.peak_char() == '=' {
-                    self.read_char();
-                    Token::GtorEq
-                } else {
-                    Token::Gt
+                '/' => Token::Slash,
+                '*' => Token::Asterisk,
+                '%' => Token::Percent,
+                '>' => {
+                    if self.peak_char() == '=' {
+                        self.read_char();
+                        Token::GtorEq
+                    } else {
+                        Token::Gt
+                    }
                 }
-            }
-            '<' => {
-                if self.peak_char() == '=' {
-                    self.read_char();
-                    Token::LtorEq
-                } else {
-                    Token::Lt
+                '<' => {
+                    if self.peak_char() == '=' {
+                        self.read_char();
+                        Token::LtorEq
+                    } else {
+                        Token::Lt
+                    }
                 }
-            }
-            ';' => Token::Semicolon,
-            '(' => Token::Lparen,
-            ')' => Token::Rparen,
-            ',' => Token::Comma,
-            '{' => Token::Lbrace,
-            '}' => Token::Rbrace,
-            '[' => Token::Lbracket,
-            ']' => Token::Rbracket,
-            '\0' => Token::Eof,
-            '"' => return self.read_string(),
-            _ if self.is_digit() => {
-                return self.read_digit();
-            }
-            _ if self.is_letter() => {
-                return self.read_identifier();
-            }
-            _ => Token::Illegal,
-        };
+                ';' => Token::Semicolon,
+                '(' => Token::Lparen,
+                ')' => Token::Rparen,
+                ',' => Token::Comma,
+                '{' => Token::Lbrace,
+                '}' => Token::Rbrace,
+                '[' => Token::Lbracket,
+                ']' => Token::Rbracket,
+                '\0' => Token::Eof,
+                '"' => return (self.read_string(), (self.line, self.column)),
+                _ if self.is_digit() => {
+                    return (self.read_digit(), (self.line, self.column));
+                }
+                _ if self.is_letter() => {
+                    return (self.read_identifier(), (self.line, self.column));
+                }
+                _ => Token::Illegal,
+            },
+            (self.line, self.column),
+        );
         self.read_char();
         token
     }

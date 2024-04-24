@@ -16,18 +16,26 @@ use crate::{
 
 struct ParserError {
     msg: String,
+    line: usize,
+    column: usize,
 }
 
 impl ParserError {
-    fn new(msg: impl Into<String>) -> ParserError {
-        ParserError { msg: msg.into() }
+    fn new(msg: impl Into<String>, line: usize, column: usize) -> ParserError {
+        ParserError {
+            msg: msg.into(),
+            line,
+            column,
+        }
     }
 }
 
 pub struct Parser {
     lexer: Lexer,
     current_token: Token,
+    current_token_position: (usize, usize),
     peek_token: Token,
+    peek_token_position: (usize, usize),
     errors: Vec<ParserError>,
 }
 
@@ -37,10 +45,11 @@ impl Parser {
             self.next_token();
             return Ok(());
         }
-        Err(ParserError::new(format!(
-            "expected {:?}, got {:?} instead",
-            expected, self.peek_token
-        )))
+        Err(ParserError::new(
+            format!("expected {:?}, got {:?} instead", expected, self.peek_token,),
+            self.peek_token_position.0,
+            self.peek_token_position.1,
+        ))
     }
     pub fn new(mut lexer: Lexer) -> Self {
         let current_token = lexer.next_token();
@@ -48,15 +57,23 @@ impl Parser {
 
         Parser {
             lexer,
-            current_token,
-            peek_token,
+            current_token: current_token.0,
+            current_token_position: current_token.1,
+            peek_token: peek_token.0,
+            peek_token_position: current_token.1,
             errors: Vec::new(),
         }
     }
 
     fn next_token(&mut self) {
         std::mem::swap(&mut self.current_token, &mut self.peek_token);
-        self.peek_token = self.lexer.next_token();
+        std::mem::swap(
+            &mut self.current_token_position,
+            &mut self.peek_token_position,
+        );
+        let peek_token = self.lexer.next_token();
+        self.peek_token = peek_token.0;
+        self.peek_token_position = peek_token.1;
     }
 
     fn peek_precedence(&self) -> Precedence {
@@ -73,7 +90,7 @@ impl Parser {
 
             self.errors
                 .iter()
-                .for_each(|err| println!("parser error: {}", err.msg))
+                .for_each(|err| println!("parser error: {} {}:{}", err.msg, err.line, err.column))
         }
     }
 
@@ -100,10 +117,11 @@ impl Parser {
     fn parse_let_statement(&mut self) -> Result<Statement, ParserError> {
         let name = match &self.peek_token {
             Token::Ident(name) => Ok(name.to_owned()),
-            token => Err(ParserError::new(format!(
-                "expected Token::Ident, got {:?} instead",
-                token
-            ))),
+            token => Err(ParserError::new(
+                format!("expected Token::Ident, got {:?} instead", token),
+                self.peek_token_position.0,
+                self.peek_token_position.1,
+            )),
         }?;
 
         self.next_token();
@@ -162,26 +180,31 @@ impl Parser {
             Token::False => Ok(Expression::Bool(false)),
             Token::True => Ok(Expression::Bool(true)),
             Token::Minus | Token::Bang => self.parse_prefix_expression(),
-            Token::Lbracket => self.parse_array_expression(),
+            Token::Lbracket => self.parse_array_literal(),
             Token::Lparen => self.parse_grouped_expression(),
             Token::If => self.parse_if_expression(),
             Token::Function => self.parse_function_literal(),
-            token => Err(ParserError::new(format!(
-                "i dont now what is this: {:?}",
-                token
-            ))),
+            token => Err(ParserError::new(
+                format!("i dont now what is this: {:?}", token),
+                self.current_token_position.0,
+                self.current_token_position.1,
+            )),
         }
     }
 
-    fn parse_array_expression(&mut self) -> Result<Expression, ParserError> {
+    fn parse_array_literal(&mut self) -> Result<Expression, ParserError> {
+        let elements = self.parse_expression_list(Token::Rbracket)?;
+        Ok(Expression::Array(elements))
+    }
+
+    fn parse_expression_list(&mut self, end: Token) -> Result<Vec<Expression>, ParserError> {
         let mut list: Vec<Expression> = vec![];
 
-        if self.peek_token == Token::Eof {
-            self.next_token();
-            return Ok(Expression::Array(list));
+        self.next_token();
+        if self.current_token == end {
+            return Ok(list);
         }
 
-        self.next_token();
         list.push(self.parse_expression(Precedence::Lowest)?);
 
         while self.peek_token == Token::Comma {
@@ -190,11 +213,9 @@ impl Parser {
             list.push(self.parse_expression(Precedence::Lowest)?)
         }
 
-        self.next_token();
+        self.assert_peek(end)?;
 
-        self.assert_peek(Token::Eof)?;
-
-        Ok(Expression::Array(list))
+        Ok(list)
     }
 
     fn parse_grouped_expression(&mut self) -> Result<Expression, ParserError> {
@@ -202,10 +223,11 @@ impl Parser {
 
         let expression = self.parse_expression(Precedence::Lowest)?;
         if self.peek_token != Token::Rparen {
-            return Err(ParserError::new(format!(
-                "expected Token::Rparen, got: {:?}",
-                self.peek_token
-            )));
+            return Err(ParserError::new(
+                format!("expected Token::Rparen, got: {:?}", self.peek_token),
+                self.peek_token_position.0,
+                self.peek_token_position.1,
+            ));
         }
         self.next_token();
         Ok(expression)
@@ -216,10 +238,11 @@ impl Parser {
             Token::Bang => PrefixOperator::Not,
             Token::Minus => PrefixOperator::Negative,
             value => {
-                return Err(ParserError::new(format!(
-                    "this is not a valid PrefixOperator: {:?}",
-                    value
-                )))
+                return Err(ParserError::new(
+                    format!("this is not a valid PrefixOperator: {:?}", value),
+                    self.current_token_position.0,
+                    self.current_token_position.1,
+                ))
             }
         };
         self.next_token();
@@ -297,10 +320,11 @@ impl Parser {
                 parameters.push(param.to_string());
             }
             value => {
-                return Err(ParserError::new(format!(
-                    "expected Token::Ident, got: {:?}",
-                    value
-                )))
+                return Err(ParserError::new(
+                    format!("expected Token::Ident, got: {:?}", value),
+                    self.current_token_position.0,
+                    self.current_token_position.1,
+                ))
             }
         }
         while self.peek_token == Token::Comma {
@@ -311,10 +335,11 @@ impl Parser {
                     parameters.push(param.to_string());
                 }
                 value => {
-                    return Err(ParserError::new(format!(
-                        "expected Token::Ident, got: {:?}",
-                        value
-                    )))
+                    return Err(ParserError::new(
+                        format!("expected Token::Ident, got: {:?}", value),
+                        self.current_token_position.0,
+                        self.current_token_position.1,
+                    ))
                 }
             }
         }
@@ -324,28 +349,40 @@ impl Parser {
     }
 
     fn parse_call_expression(&mut self, function: Expression) -> Result<Expression, ParserError> {
-        let arguments = self.parse_call_arguments()?;
+        let arguments = self.parse_expression_list(Token::Rparen)?;
         Ok(Expression::Call {
             function: Box::new(function),
             arguments,
         })
     }
 
-    fn parse_call_arguments(&mut self) -> Result<Vec<Expression>, ParserError> {
-        let mut args = Vec::new();
-        self.next_token();
-        if self.current_token == Token::Rparen {
-            return Ok(args);
-        }
-        args.push(self.parse_expression(Precedence::Lowest)?);
+    // fn parse_call_arguments(&mut self) -> Result<Vec<Expression>, ParserError> {
+    //     let mut args = Vec::new();
+    //     self.next_token();
+    //     if self.current_token == Token::Rparen {
+    //         return Ok(args);
+    //     }
+    //     args.push(self.parse_expression(Precedence::Lowest)?);
+    //
+    //     while self.peek_token == Token::Comma {
+    //         self.next_token();
+    //         self.next_token();
+    //         args.push(self.parse_expression(Precedence::Lowest)?)
+    //     }
+    //     self.assert_peek(Token::Rparen)?;
+    //     Ok(args)
+    // }
 
-        while self.peek_token == Token::Comma {
-            self.next_token();
-            self.next_token();
-            args.push(self.parse_expression(Precedence::Lowest)?)
-        }
-        self.assert_peek(Token::Rparen)?;
-        Ok(args)
+    fn parse_index_expression(&mut self, lhs: Expression) -> Result<Expression, ParserError> {
+        self.next_token();
+        let idx = self.parse_expression(Precedence::Lowest)?;
+
+        self.assert_peek(Token::Rbracket)?;
+
+        Ok(Expression::Index {
+            lhs: Box::new(lhs),
+            index: Box::new(idx),
+        })
     }
 
     fn parse_infix_expression(&mut self, lhs: Expression) -> Result<Expression, ParserError> {
@@ -361,12 +398,14 @@ impl Parser {
             Token::Lt => InfixOperator::LessThan,
             Token::LtorEq => InfixOperator::LessThanOrEqual,
             Token::Percent => InfixOperator::Modulo,
+            Token::Lbracket => return self.parse_index_expression(lhs),
             Token::Lparen => return self.parse_call_expression(lhs),
             value => {
-                return Err(ParserError::new(format!(
-                    "This is not a valid InfixOperator: {:?}",
-                    value
-                )))
+                return Err(ParserError::new(
+                    format!("This is not a valid InfixOperator: {:?}", value),
+                    self.current_token_position.0,
+                    self.current_token_position.1,
+                ))
             }
         };
         let precedence = self.current_precedence();

@@ -216,6 +216,8 @@ fn test_eval_error_handling() {
         ),
         ("foobar", "identifier not found: foobar"),
         (r#""Hello" - "World""#, "unknown operator: STRING - STRING"),
+        ("[1, 2, 3][3]", "index out of bounds"),
+        ("[1, 2, 3][-1]", "index out of bounds"),
     ];
 
     tests_cases.iter().for_each(|(input, expected)| {
@@ -324,24 +326,52 @@ fn test_builtin_functions() {
     });
 }
 
-// #[test]
-// fn test_eval_array() {
-//     let input = "[1, 2 * 2, 3 + 3]";
-//     let lexer = Lexer::new(input.chars().collect());
-//     let mut parser = Parser::new(lexer);
-//     let program = parser.parse_program();
-//     let env = Environment::new();
-//     let mut eval = Eval::new(Rc::new(RefCell::new(env)));
-//     parser.check_errors();
-//
-//     match eval.eval_program(program) {
-//         Ok(Value::Function {
-//             parameters, body, ..
-//         }) => {
-//             assert_eq!(parameters, vec!["x"]);
-//             assert_eq!(body[0].to_string(), "(x + 2)");
-//         }
-//         Ok(value) => panic!("expected Value::Function, got: {value:?}"),
-//         Err(err) => panic!("got an error: {err:?}"),
-//     }
-// }
+#[test]
+fn test_eval_array() {
+    let input = "[1, 2 * 2, 3 + 3]";
+    let lexer = Lexer::new(input.chars().collect());
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    let env = Environment::new();
+    let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+    parser.check_errors();
+
+    match eval.eval_program(program) {
+        Ok(Value::Array(values)) => {
+            assert_eq!(Value::Int(1), values[0]);
+            assert_eq!(Value::Int(4), values[1]);
+            assert_eq!(Value::Int(6), values[2]);
+        }
+        Ok(value) => panic!("expected Value::Function, got: {value:?}"),
+        Err(err) => panic!("got an error: {err:?}"),
+    }
+}
+
+#[test]
+fn test_eval_arrray_index_expression() {
+    let tests_cases = [
+        ("[1, 2, 3][0]", 1),
+        ("[1, 2, 3][1]", 2),
+        ("[1, 2, 3][2]", 3),
+        ("let i = 0; [1][i];", 1),
+        ("[1, 2, 3][1 + 1];", 3),
+        ("let myArray = [1, 2, 3]; myArray[2];", 3),
+        (
+            "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+            6,
+        ),
+        ("let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]", 2),
+    ];
+
+    tests_cases.iter().for_each(|(input, expected)| {
+        let lexer = Lexer::new(input.chars().collect());
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
+        let env = Environment::from(new_builtins());
+        let mut eval = Eval::new(Rc::new(RefCell::new(env)));
+        match eval.eval_program(program) {
+            Ok(Value::Int(value)) => assert_eq!(value, *expected),
+            unexpected => panic!("got an error: {unexpected:?}"),
+        }
+    });
+}

@@ -47,7 +47,17 @@ impl Display for Value {
             }
             Value::String(string) => write!(f, r#""{}""#, string),
             Value::Builtin(_) => write!(f, "[builtin function]"),
-            Value::Array(value) => write!(f, "{value:?}"),
+            Value::Array(values) => {
+                write!(
+                    f,
+                    "[{}]",
+                    values
+                        .iter()
+                        .map(|value| value.to_string())
+                        .collect::<Vec<String>>()
+                        .join(",")
+                )
+            }
         }
     }
 }
