@@ -1,5 +1,7 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::rc::Rc;
 
 use crate::ast::statement::Statement;
@@ -24,6 +26,20 @@ pub enum Value {
         env: Rc<RefCell<Environment>>,
     },
     Builtin(BuiltinFuncion),
+    Hash(HashMap<Value, Value>),
+}
+
+impl Eq for Value {}
+
+impl Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match *self {
+            Value::Int(ref int) => int.hash(state),
+            Value::Bool(ref bool) => bool.hash(state),
+            Value::String(ref string) => string.hash(state),
+            _ => "".hash(state),
+        }
+    }
 }
 
 impl Display for Value {
@@ -58,6 +74,7 @@ impl Display for Value {
                         .join(",")
                 )
             }
+            Value::Hash(_) => todo!(),
         }
     }
 }
@@ -74,6 +91,7 @@ impl Value {
             Value::String(_) => "STRING".into(),
             Value::Builtin(_) => "BUILTIN".into(),
             Value::Array(_) => "ARRAY".into(),
+            Value::Hash(_) => "HASH".into(),
         }
     }
 }

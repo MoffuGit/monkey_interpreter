@@ -1,5 +1,6 @@
 use crate::ast::operator::{InfixOperator, PrefixOperator};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
 
@@ -180,17 +181,47 @@ impl Eval {
 
                 self.eval_index_expression(lhs, index)
             }
-            Expression::Hash(_) => todo!(),
+            Expression::Hash(pairs) => {
+                let hash = pairs
+                    .iter()
+                    .map(|(k, v)| {
+                        let key = self.eval_expression(k.clone())?;
+                        let value = self.eval_expression(v.clone())?;
+                        Ok((key, value))
+                    })
+                    .collect::<Result<HashMap<_, _>, EvalError>>()?;
+                Ok(Value::Hash(hash))
+            }
         }
     }
 
     fn eval_index_expression(&mut self, lhs: Value, index: Value) -> Result<Value, EvalError> {
         match (lhs, index) {
             (Value::Array(array), Value::Int(idx)) => self.eval_array_index_expression(array, idx),
+            (Value::Hash(lhs), index) => match index {
+                Value::Bool(_) | Value::Int(_) | Value::String(_) => {
+                    self.eval_hash_index_expression(lhs, index)
+                }
+                _ => Err(EvalError::new(format!(
+                    "unusable as hash key: {}",
+                    index.as_type()
+                ))),
+            },
             (lhs, _) => Err(EvalError::new(format!(
                 "index operator not supported: {lhs}"
             ))),
         }
+    }
+
+    fn eval_hash_index_expression(
+        &mut self,
+        lhs: HashMap<Value, Value>,
+        idx: Value,
+    ) -> Result<Value, EvalError> {
+        Ok(match lhs.get(&idx) {
+            Some(value) => value.clone(),
+            None => Value::Null,
+        })
     }
 
     fn eval_array_index_expression(

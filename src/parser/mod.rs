@@ -181,6 +181,7 @@ impl Parser {
             Token::True => Ok(Expression::Bool(true)),
             Token::Minus | Token::Bang => self.parse_prefix_expression(),
             Token::Lbracket => self.parse_array_literal(),
+            Token::Lbrace => self.parse_hash_literal(),
             Token::Lparen => self.parse_grouped_expression(),
             Token::If => self.parse_if_expression(),
             Token::Function => self.parse_function_literal(),
@@ -190,6 +191,28 @@ impl Parser {
                 self.current_token_position.1,
             )),
         }
+    }
+
+    fn parse_hash_literal(&mut self) -> Result<Expression, ParserError> {
+        let mut hash: Vec<(Expression, Expression)> = vec![];
+        while self.peek_token != Token::Rbrace {
+            self.next_token();
+            let key = self.parse_expression(Precedence::Lowest)?;
+
+            self.assert_peek(Token::Colon)?;
+
+            self.next_token();
+
+            let value = self.parse_expression(Precedence::Lowest)?;
+
+            hash.push((key, value));
+
+            if self.peek_token != Token::Rbrace {
+                self.assert_peek(Token::Comma)?;
+            }
+        }
+        self.assert_peek(Token::Rbrace)?;
+        Ok(Expression::Hash(hash))
     }
 
     fn parse_array_literal(&mut self) -> Result<Expression, ParserError> {

@@ -1,6 +1,6 @@
 use crate::lexer::token::Token;
 
-#[derive(PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd, Debug)]
 pub enum Precedence {
     Lowest = 1,
     Equals = 2,

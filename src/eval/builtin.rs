@@ -10,6 +10,7 @@ pub fn new_builtins() -> HashMap<String, Value> {
     builtins.insert(String::from("last"), Value::Builtin(builtin_last));
     builtins.insert(String::from("rest"), Value::Builtin(builtin_rest));
     builtins.insert(String::from("push"), Value::Builtin(builtin_push));
+    builtins.insert(String::from("puts"), Value::Builtin(builtin_puts));
     builtins
 }
 
@@ -108,4 +109,9 @@ fn builtin_push(args: Vec<Value>) -> Result<Value, EvalError> {
             &args[1].as_type()
         ))),
     }
+}
+
+fn builtin_puts(args: Vec<Value>) -> Result<Value, EvalError> {
+    args.iter().for_each(|arg| println!("{arg}"));
+    Ok(Value::Null)
 }

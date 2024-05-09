@@ -418,3 +418,91 @@ fn test_index_expression() {
         value => panic!("expected Array got: {:?}", value),
     }
 }
+
+#[test]
+fn test_hash_string_keys() {
+    let input = r#"{"one": 1, "two": 2, "three": 3}"#.chars().collect();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    parser.check_errors();
+    match program.statements.first() {
+        Some(Statement::Expression(Expression::Hash(values))) => {
+            assert_eq!(values.len(), 3);
+            assert_eq!(
+                values,
+                &vec![
+                    (Expression::String("one".into()), Expression::Int(1)),
+                    (Expression::String("two".into()), Expression::Int(2)),
+                    (Expression::String("three".into()), Expression::Int(3))
+                ]
+            );
+        }
+        value => panic!("expected Hash got: {:?}", value),
+    }
+}
+
+#[test]
+fn test_empty_hash() {
+    let input = "{}".chars().collect();
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    parser.check_errors();
+    match program.statements.first() {
+        Some(Statement::Expression(Expression::Hash(values))) => {
+            assert_eq!(values.len(), 0);
+        }
+        value => panic!("expected Hash got: {:?}", value),
+    }
+}
+
+#[test]
+fn test_hash_with_expression() {
+    let input = r#"{"one": 0 + 1, "two": 10 - 8, "three": 15 / 5}"#
+        .chars()
+        .collect();
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    parser.check_errors();
+    match program.statements.first() {
+        Some(Statement::Expression(Expression::Hash(values))) => {
+            assert_eq!(values.len(), 3);
+            assert_eq!(
+                values,
+                &vec![
+                    (
+                        Expression::String("one".into()),
+                        Expression::Infix {
+                            lhs: Box::new(Expression::Int(0)),
+                            operator: InfixOperator::Add,
+                            rhs: Box::new(Expression::Int(1))
+                        }
+                    ),
+                    (
+                        Expression::String("two".into()),
+                        Expression::Infix {
+                            lhs: Box::new(Expression::Int(10)),
+                            operator: InfixOperator::Sub,
+                            rhs: Box::new(Expression::Int(8))
+                        }
+                    ),
+                    (
+                        Expression::String("three".into()),
+                        Expression::Infix {
+                            lhs: Box::new(Expression::Int(15)),
+                            operator: InfixOperator::Div,
+                            rhs: Box::new(Expression::Int(5))
+                        }
+                    )
+                ]
+            );
+        }
+        value => panic!("expected Hash got: {:?}", value),
+    }
+}
