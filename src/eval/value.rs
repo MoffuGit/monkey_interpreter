@@ -29,6 +29,18 @@ pub enum Value {
     Hash(HashMap<Value, Value>),
 }
 
+impl From<i64> for Value {
+    fn from(value: i64) -> Self {
+        Value::Int(value)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Value::Bool(value)
+    }
+}
+
 impl Eq for Value {}
 
 impl Hash for Value {
