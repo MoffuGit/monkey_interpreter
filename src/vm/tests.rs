@@ -35,8 +35,8 @@ fn run_vm_test(tests: Vec<VmTestCase>) {
         }
 
         let mut vm = Vm::new(compiler.bytecode());
-        if vm.run().is_err() {
-            panic!("Vm run fail");
+        if let Err(err) = vm.run() {
+            panic!("{}", err);
         }
 
         let stack_element = vm.last_popped_element;
@@ -97,6 +97,25 @@ fn test_bool_expression() {
         VmTestCase::new("!!true", true),
         VmTestCase::new("!!false", false),
         VmTestCase::new("!!5", true),
+        VmTestCase::new("!(if (false) { 5; })", true),
+    ];
+
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_conditionals() {
+    let tests = vec![
+        VmTestCase::new("if (true) { 10 }", 10),
+        VmTestCase::new("if (true) { 10 } else { 20 }", 10),
+        VmTestCase::new("if (false) { 10 } else { 20 } ", 20),
+        VmTestCase::new("if (1) { 10 }", 10),
+        VmTestCase::new("if (1 < 2) { 10 }", 10),
+        VmTestCase::new("if (1 < 2) { 10 } else { 20 }", 10),
+        VmTestCase::new("if (1 > 2) { 10 } else { 20 }", 20),
+        VmTestCase::new("if (1 > 2) { 10 }", Value::Null),
+        VmTestCase::new("if (false) { 10 }", Value::Null),
+        VmTestCase::new("if ((if (false) { 10 })) { 10 } else { 20 }", 20),
     ];
 
     run_vm_test(tests);

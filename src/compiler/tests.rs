@@ -7,15 +7,15 @@ use super::Compiler;
 
 struct CompilerTestCase {
     input: String,
-    expected_constants: Vec<u8>,
+    expected_constants: Vec<i64>,
     expected_instructions: Vec<code::Instructions>,
 }
 
 impl CompilerTestCase {
     pub fn new<S: Into<String>>(
         input: S,
-        expected_constants: &[u8],
-        expected_instructions: &[(OpCode, &[u64])],
+        expected_constants: &[i64],
+        expected_instructions: &[(OpCode, &[i64])],
     ) -> Self {
         CompilerTestCase {
             input: input.into(),
@@ -54,7 +54,7 @@ fn run_compiler_test(tests: &[CompilerTestCase]) {
         for (idx, constant) in byte_code.constants.iter().enumerate() {
             match constant {
                 crate::eval::value::Value::Int(value) => {
-                    assert_eq!(*value as u8, test.expected_constants[idx])
+                    assert_eq!(*value, test.expected_constants[idx])
                 }
                 _ => unreachable!(),
             }
@@ -203,6 +203,57 @@ pub fn test_boolean_expression() {
             &[
                 (OpCode::OpTrue, &[]),
                 (OpCode::OpBang, &[]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+    ];
+    run_compiler_test(tests);
+}
+
+#[test]
+pub fn test_conditional() {
+    let tests = &[
+        CompilerTestCase::new(
+            "if (true) { 10 }; 3333;",
+            &[10, 3333],
+            &[
+                // 0000
+                (OpCode::OpTrue, &[]),
+                // 0001
+                (OpCode::OpJumpNotTruthy, &[10]),
+                // 0004
+                (OpCode::OpConstant, &[0]),
+                // 0007
+                (OpCode::OpJump, &[11]),
+                // 0010
+                (OpCode::OpNull, &[]),
+                // 0011
+                (OpCode::OpPop, &[]),
+                // 0012
+                (OpCode::OpConstant, &[1]),
+                // 0015
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            "if (true) { 10 } else { 20 }; 3333;",
+            &[10, 20, 3333],
+            &[
+                // 0000
+                (OpCode::OpTrue, &[]),
+                // 0001
+                (OpCode::OpJumpNotTruthy, &[10]),
+                // 0004
+                (OpCode::OpConstant, &[0]),
+                // 0007
+                (OpCode::OpJump, &[13]),
+                // 0010
+                (OpCode::OpConstant, &[1]),
+                // 0013
+                (OpCode::OpPop, &[]),
+                // 0014
+                (OpCode::OpConstant, &[2]),
+                // 0017
                 (OpCode::OpPop, &[]),
             ],
         ),

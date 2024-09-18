@@ -3,7 +3,7 @@ use super::*;
 fn test_make() {
     struct Test {
         op: OpCode,
-        operands: Vec<u64>,
+        operands: Vec<i64>,
         expected: Instructions,
     }
     let tests = vec![
@@ -45,7 +45,7 @@ pub fn test_instruction_string() {
 pub fn test_read_operands() {
     struct Test {
         op: OpCode,
-        operands: Vec<u64>,
+        operands: Vec<i64>,
         bytes_read: u8,
     }
 

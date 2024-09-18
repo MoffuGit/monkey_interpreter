@@ -30,6 +30,8 @@ impl Display for CompilerError {
 pub struct Compiler {
     instructions: code::Instructions,
     constants: Vec<value::Value>,
+    last_instruction: Option<EmittedInstruction>,
+    previous_instruction: Option<EmittedInstruction>,
 }
 
 pub struct ByteCode {
@@ -37,11 +39,19 @@ pub struct ByteCode {
     pub constants: Vec<value::Value>,
 }
 
+#[derive(Clone)]
+pub struct EmittedInstruction {
+    op: OpCode,
+    position: i64,
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Compiler {
             instructions: Instructions(vec![]),
             constants: vec![],
+            last_instruction: None,
+            previous_instruction: None,
         }
     }
 
@@ -57,12 +67,16 @@ impl Compiler {
             Statement::Expression(expression) => {
                 self.compile_expression(expression)?;
                 self.emit(OpCode::OpPop, &[]);
-                Ok(())
             }
             Statement::Let { name, value } => todo!(),
             Statement::Return(_) => todo!(),
-            Statement::Block(_) => todo!(),
-        }
+            Statement::Block(statements) => {
+                for statement in statements {
+                    self.compile_statement(statement)?;
+                }
+            }
+        };
+        Ok(())
     }
 
     fn compile_expression(&mut self, expression: Expression) -> Result<(), CompilerError> {
@@ -115,7 +129,29 @@ impl Compiler {
                 condition,
                 consequence,
                 alternative,
-            } => todo!(),
+            } => {
+                self.compile_expression(*condition)?;
+                let jump_not_truthy_pos = self.emit(OpCode::OpJumpNotTruthy, &[9999]);
+                self.compile_statement(Statement::Block(consequence))?;
+                if self.last_instruction_is_pop() {
+                    self.remove_last_pop();
+                }
+
+                let jump_pos = self.emit(OpCode::OpJump, &[9999]);
+                let after_consequence_pos = self.instructions.len();
+                self.change_operand(jump_not_truthy_pos, &[after_consequence_pos as i64]);
+
+                if let Some(alternative) = alternative {
+                    self.compile_statement(Statement::Block(alternative))?;
+                    if self.last_instruction_is_pop() {
+                        self.remove_last_pop();
+                    }
+                } else {
+                    self.emit(OpCode::OpNull, &[]);
+                }
+                let after_aternative_pos = self.instructions.len();
+                self.change_operand(jump_pos, &[after_aternative_pos as i64]);
+            }
             Expression::Fn { parameters, body } => todo!(),
             Expression::Call {
                 function,
@@ -128,18 +164,61 @@ impl Compiler {
         Ok(())
     }
 
-    fn add_constant(&mut self, value: Value) -> u64 {
+    fn replace_instruction(&mut self, position: i64, new_instruction: Instructions) {
+        let mut idx = 0;
+        while idx < new_instruction.0.len() {
+            self.instructions.0[position as usize + idx] = new_instruction.0[idx];
+            idx += 1;
+        }
+    }
+
+    fn change_operand(&mut self, op_position: i64, operand: &[i64]) {
+        let op = OpCode::try_from(self.instructions[op_position as usize]);
+        if op.is_err() {
+            panic!("your instruction become invalid")
+        }
+        let new_instruction = code::make(op.unwrap(), operand);
+
+        self.replace_instruction(op_position, new_instruction);
+    }
+
+    fn last_instruction_is_pop(&mut self) -> bool {
+        if let Some(last) = &self.last_instruction {
+            last.op == OpCode::OpPop
+        } else {
+            false
+        }
+    }
+
+    fn remove_last_pop(&mut self) {
+        self.instructions = Instructions(
+            self.instructions.0[..self.last_instruction.clone().unwrap().position as usize]
+                .to_vec(),
+        );
+        self.last_instruction = self.previous_instruction.clone();
+    }
+
+    fn add_constant(&mut self, value: Value) -> i64 {
         self.constants.push(value);
-        self.constants.len() as u64 - 1
+        self.constants.len() as i64 - 1
     }
 
-    fn emit(&mut self, op: OpCode, operands: &[u64]) -> u64 {
+    fn emit(&mut self, op: OpCode, operands: &[i64]) -> i64 {
         let instruction = code::make(op, operands);
-        self.add_instruction(instruction)
+        let position = self.add_instruction(instruction);
+        self.set_last_instruction(op, position);
+        position
     }
 
-    fn add_instruction(&mut self, instructions: Instructions) -> u64 {
-        let position_new_instruction = self.instructions.0.len() as u64;
+    fn set_last_instruction(&mut self, op: OpCode, position: i64) {
+        let previous = self.last_instruction.clone();
+        let last = Some(EmittedInstruction { op, position });
+        self.previous_instruction = previous;
+        self.last_instruction = last;
+    }
+
+    fn add_instruction(&mut self, instructions: Instructions) -> i64 {
+        let position_new_instruction = self.instructions.0.len() as i64;
         self.instructions.0.extend(instructions.0.iter());
         position_new_instruction
     }

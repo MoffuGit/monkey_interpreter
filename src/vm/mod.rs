@@ -1,10 +1,13 @@
-use crate::code::{self, OpCode};
+use crate::code;
+use crate::code::OpCode;
 use crate::compiler::ByteCode;
 use crate::eval::value::Value;
 use std::fmt::Display;
 
 #[cfg(test)]
 mod tests;
+
+const NULL: Value = Value::Null;
 
 pub struct VmError {
     msg: String,
@@ -46,8 +49,8 @@ impl Vm {
     pub fn run(&mut self) -> Result<(), VmError> {
         let mut ip = 0;
 
-        while ip < self.instructions.0.len() {
-            let op = match OpCode::try_from(self.instructions.0[ip]) {
+        while ip < self.instructions.len() {
+            let op = match OpCode::try_from(self.instructions[ip]) {
                 Ok(op) => op,
                 Err(_) => return Err(VmError::new("the u8 isnt a valid OpCode")),
             };
@@ -55,7 +58,7 @@ impl Vm {
             match op {
                 OpCode::OpConstant => {
                     let const_idx =
-                        u16::from_be_bytes(self.instructions.0[ip + 1..ip + 3].try_into().unwrap());
+                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
                     ip += 2;
                     self.push(self.constans[const_idx as usize].clone())?;
                 }
@@ -78,12 +81,38 @@ impl Vm {
                     self.execute_bang_operator()?;
                 }
                 OpCode::OpMinus => self.execute_minus_operator()?,
+                OpCode::OpJump => {
+                    let position =
+                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+                    ip = (position - 1) as usize;
+                }
+                OpCode::OpJumpNotTruthy => {
+                    let position =
+                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+
+                    ip += 2;
+                    let condition = self.pop()?;
+                    if !self.is_truthy(condition) {
+                        ip = (position - 1) as usize;
+                    }
+                }
+                OpCode::OpNull => {
+                    self.push(Value::Null)?;
+                }
                 _ => (),
             };
             ip += 1;
         }
 
         Ok(())
+    }
+
+    fn is_truthy(&mut self, value: Value) -> bool {
+        match value {
+            Value::Bool(bool) => bool,
+            Value::Null => false,
+            _ => true,
+        }
     }
 
     fn execute_minus_operator(&mut self) -> Result<(), VmError> {
@@ -100,6 +129,7 @@ impl Vm {
         let op = self.pop()?;
         match op {
             Value::Bool(bool) => self.push(!bool),
+            Value::Null => self.push(true),
             _ => self.push(false),
         }
     }
