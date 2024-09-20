@@ -260,3 +260,42 @@ pub fn test_conditional() {
     ];
     run_compiler_test(tests);
 }
+
+#[test]
+fn test_global_let_statements() {
+    let tests = &[
+        CompilerTestCase::new(
+            " let one = 1; let two = 2; ",
+            &[1, 2],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpSetGlobal, &[1]),
+            ],
+        ),
+        CompilerTestCase::new(
+            " let one = 1; one; ",
+            &[1],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpGetGlobal, &[0]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            " let one = 1; let two = one; two;",
+            &[1],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpGetGlobal, &[0]),
+                (OpCode::OpSetGlobal, &[1]),
+                (OpCode::OpGetGlobal, &[1]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+    ];
+    run_compiler_test(tests)
+}

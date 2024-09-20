@@ -2,12 +2,12 @@ use crate::code;
 use crate::code::OpCode;
 use crate::compiler::ByteCode;
 use crate::eval::value::Value;
+use std::cell::RefCell;
 use std::fmt::Display;
+use std::rc::Rc;
 
 #[cfg(test)]
 mod tests;
-
-const NULL: Value = Value::Null;
 
 pub struct VmError {
     msg: String,
@@ -33,6 +33,7 @@ pub struct Vm {
     stack: Vec<Value>,
     sp: usize,
     pub last_popped_element: Option<Value>,
+    globals: Rc<RefCell<Vec<Value>>>,
 }
 
 impl Vm {
@@ -43,7 +44,14 @@ impl Vm {
             stack: Vec::with_capacity(STACK_SIZE),
             last_popped_element: None,
             sp: 0,
+            globals: Rc::new(RefCell::new(Vec::with_capacity(65536))),
         }
+    }
+
+    pub fn new_with_global_store(byte_code: ByteCode, storage: Rc<RefCell<Vec<Value>>>) -> Self {
+        let mut vm = Vm::new(byte_code);
+        vm.globals = storage;
+        vm
     }
 
     pub fn run(&mut self) -> Result<(), VmError> {
@@ -98,6 +106,24 @@ impl Vm {
                 }
                 OpCode::OpNull => {
                     self.push(Value::Null)?;
+                }
+                OpCode::OpSetGlobal => {
+                    let global_idx =
+                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+                    ip += 2;
+                    let value = self.pop()?;
+                    if self.globals.borrow().len() == global_idx as usize {
+                        self.globals.borrow_mut().push(value);
+                    } else {
+                        self.globals.borrow_mut()[global_idx as usize] = value;
+                    }
+                }
+                OpCode::OpGetGlobal => {
+                    let global_idx =
+                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+                    ip += 2;
+                    let value = self.globals.borrow_mut()[global_idx as usize].clone();
+                    self.push(value)?;
                 }
                 _ => (),
             };

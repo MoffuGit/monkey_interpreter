@@ -120,3 +120,14 @@ fn test_conditionals() {
 
     run_vm_test(tests);
 }
+
+#[test]
+fn test_global_let_statements() {
+    let tests = vec![
+        VmTestCase::new("let one = 1; one", 1),
+        VmTestCase::new("let one = 1; let two = 2; one + two", 3),
+        VmTestCase::new("let one = 1; let two = one + one; one + two", 3),
+    ];
+
+    run_vm_test(tests);
+}

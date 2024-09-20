@@ -1,3 +1,6 @@
+pub mod symbol_table;
+#[cfg(test)]
+mod symbol_table_test;
 #[cfg(test)]
 mod tests;
 
@@ -8,7 +11,11 @@ use crate::ast::statement::Statement;
 use crate::code::{Instructions, OpCode};
 use crate::eval::value::Value;
 use crate::{code, eval::value};
+use std::cell::RefCell;
 use std::fmt::Display;
+use std::rc::Rc;
+
+use self::symbol_table::SymbolTable;
 
 #[derive(Debug)]
 pub struct CompilerError {
@@ -29,9 +36,10 @@ impl Display for CompilerError {
 
 pub struct Compiler {
     instructions: code::Instructions,
-    constants: Vec<value::Value>,
+    constants: Rc<RefCell<Vec<value::Value>>>,
     last_instruction: Option<EmittedInstruction>,
     previous_instruction: Option<EmittedInstruction>,
+    symbol_table: Rc<RefCell<SymbolTable>>,
 }
 
 pub struct ByteCode {
@@ -49,10 +57,21 @@ impl Compiler {
     pub fn new() -> Self {
         Compiler {
             instructions: Instructions(vec![]),
-            constants: vec![],
+            constants: Rc::new(RefCell::new(vec![])),
             last_instruction: None,
             previous_instruction: None,
+            symbol_table: Rc::new(RefCell::new(SymbolTable::new())),
         }
+    }
+
+    pub fn new_with_state(
+        symbol_table: Rc<RefCell<SymbolTable>>,
+        constatns: Rc<RefCell<Vec<Value>>>,
+    ) -> Self {
+        let mut compiler = Compiler::new();
+        compiler.symbol_table = symbol_table;
+        compiler.constants = constatns;
+        compiler
     }
 
     pub fn compile_program(&mut self, program: Program) -> Result<(), CompilerError> {
@@ -68,7 +87,12 @@ impl Compiler {
                 self.compile_expression(expression)?;
                 self.emit(OpCode::OpPop, &[]);
             }
-            Statement::Let { name, value } => todo!(),
+            Statement::Let { name, value } => {
+                self.compile_expression(value)?;
+
+                let symbol = self.symbol_table.borrow_mut().define(name);
+                self.emit(OpCode::OpSetGlobal, &[symbol.index]);
+            }
             Statement::Return(_) => todo!(),
             Statement::Block(statements) => {
                 for statement in statements {
@@ -86,7 +110,14 @@ impl Compiler {
                 let operands = vec![self.add_constant(int)];
                 self.emit(OpCode::OpConstant, &operands);
             }
-            Expression::Identifier(_) => todo!(),
+            Expression::Identifier(name) => {
+                let symbol = self.symbol_table.borrow_mut().resolve(&name);
+                if symbol.is_none() {
+                    return Err(CompilerError::new(format!("undefined variable: {}", name)));
+                }
+                let symbol = symbol.unwrap();
+                self.emit(OpCode::OpGetGlobal, &[symbol.index]);
+            }
             Expression::String(_) => todo!(),
             Expression::Prefix { rhs, operator } => {
                 self.compile_expression(*rhs)?;
@@ -199,8 +230,8 @@ impl Compiler {
     }
 
     fn add_constant(&mut self, value: Value) -> i64 {
-        self.constants.push(value);
-        self.constants.len() as i64 - 1
+        self.constants.borrow_mut().push(value);
+        self.constants.borrow_mut().len() as i64 - 1
     }
 
     fn emit(&mut self, op: OpCode, operands: &[i64]) -> i64 {
@@ -226,7 +257,7 @@ impl Compiler {
     pub fn bytecode(&self) -> ByteCode {
         ByteCode {
             instructions: self.instructions.clone(),
-            constants: self.constants.clone(),
+            constants: self.constants.borrow_mut().clone(),
         }
     }
 }

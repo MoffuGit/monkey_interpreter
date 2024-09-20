@@ -97,6 +97,8 @@ pub enum OpCode {
     OpJumpNotTruthy,
     OpJump,
     OpNull,
+    OpGetGlobal,
+    OpSetGlobal,
 }
 
 #[derive(Debug)]
@@ -140,6 +142,8 @@ impl From<OpCode> for Definition {
             OpCode::OpJumpNotTruthy => Definition::new("OpJumpNotTruthy").width(vec![2]),
             OpCode::OpJump => Definition::new("OpJump").width(vec![2]),
             OpCode::OpNull => Definition::new("OpNull"),
+            OpCode::OpGetGlobal => Definition::new("OpGetGlobal").width(vec![2]),
+            OpCode::OpSetGlobal => Definition::new("OpSetGlobal").width(vec![2]),
         }
     }
 }
@@ -165,6 +169,8 @@ impl TryFrom<u8> for OpCode {
             13 => OpCode::OpJumpNotTruthy,
             14 => OpCode::OpJump,
             15 => OpCode::OpNull,
+            16 => OpCode::OpGetGlobal,
+            17 => OpCode::OpSetGlobal,
             _ => return Err(()),
         })
     }

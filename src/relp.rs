@@ -1,6 +1,7 @@
-use crate::compiler::{self, Compiler};
+use crate::compiler::symbol_table::SymbolTable;
+use crate::compiler::Compiler;
 use crate::eval::builtin::new_builtins;
-use crate::vm::{self, Vm};
+use crate::vm::Vm;
 use std::cell::RefCell;
 use std::io::{self, stdin, stdout, Write};
 use std::rc::Rc;
@@ -36,6 +37,9 @@ pub fn start_interpreter() -> io::Result<()> {
 }
 
 pub fn start_compiler() -> io::Result<()> {
+    let constans = Rc::new(RefCell::new(vec![]));
+    let globals = Rc::new(RefCell::new(vec![]));
+    let symbol_table = Rc::new(RefCell::new(SymbolTable::new()));
     loop {
         let mut buffer = String::new();
         print!("{PROMPT} ");
@@ -45,14 +49,16 @@ pub fn start_compiler() -> io::Result<()> {
         let mut parser = Parser::new(lexer);
 
         let program = parser.parse_program();
+
         parser.check_errors();
-        let mut compiler = Compiler::new();
+
+        let mut compiler = Compiler::new_with_state(symbol_table.clone(), constans.clone());
         if let Err(err) = compiler.compile_program(program) {
             println!("Compiler error: {err}");
             continue;
         }
 
-        let mut machine = Vm::new(compiler.bytecode());
+        let mut machine = Vm::new_with_global_store(compiler.bytecode(), globals.clone());
 
         if let Err(err) = machine.run() {
             println!("Executing bytecode error: {err}");
