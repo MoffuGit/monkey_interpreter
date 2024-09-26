@@ -118,7 +118,11 @@ impl Compiler {
                 let symbol = symbol.unwrap();
                 self.emit(OpCode::OpGetGlobal, &[symbol.index]);
             }
-            Expression::String(_) => todo!(),
+            Expression::String(value) => {
+                let string = Value::String(value);
+                let operands = vec![self.add_constant(string)];
+                self.emit(OpCode::OpConstant, &operands);
+            }
             Expression::Prefix { rhs, operator } => {
                 self.compile_expression(*rhs)?;
 
@@ -188,9 +192,28 @@ impl Compiler {
                 function,
                 arguments,
             } => todo!(),
-            Expression::Array(_) => todo!(),
-            Expression::Index { lhs, index } => todo!(),
-            Expression::Hash(_) => todo!(),
+            Expression::Array(values) => {
+                let len = values.len();
+                for value in values {
+                    self.compile_expression(value)?;
+                }
+
+                self.emit(OpCode::OpArray, &[len.try_into().unwrap()]);
+            }
+            Expression::Index { lhs, index } => {
+                self.compile_expression(*lhs)?;
+                self.compile_expression(*index)?;
+                self.emit(OpCode::OpIndex, &[]);
+            }
+            Expression::Hash(values) => {
+                let mut len = 0;
+                for (key, value) in values {
+                    self.compile_expression(key)?;
+                    self.compile_expression(value)?;
+                    len += 2;
+                }
+                self.emit(OpCode::OpHash, &[len.into()]);
+            }
         };
         Ok(())
     }

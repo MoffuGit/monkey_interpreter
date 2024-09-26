@@ -1,5 +1,6 @@
 use crate::ast::program::Program;
 use crate::code::{self, concat_instructions, OpCode};
+use crate::eval::value::Value;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 
@@ -7,19 +8,22 @@ use super::Compiler;
 
 struct CompilerTestCase {
     input: String,
-    expected_constants: Vec<i64>,
+    expected_constants: Vec<Value>,
     expected_instructions: Vec<code::Instructions>,
 }
 
 impl CompilerTestCase {
-    pub fn new<S: Into<String>>(
+    pub fn new<S: Into<String>, V: Into<Value> + Clone>(
         input: S,
-        expected_constants: &[i64],
+        expected_constants: &[V],
         expected_instructions: &[(OpCode, &[i64])],
     ) -> Self {
         CompilerTestCase {
             input: input.into(),
-            expected_constants: expected_constants.to_vec(),
+            expected_constants: expected_constants
+                .iter()
+                .map(|value| std::convert::Into::<Value>::into(value.clone()))
+                .collect::<Vec<Value>>(),
             expected_instructions: expected_instructions
                 .iter()
                 .map(|(op, operands)| code::make(*op, operands))
@@ -51,14 +55,7 @@ fn run_compiler_test(tests: &[CompilerTestCase]) {
         );
         assert_eq!(&byte_code.constants.len(), &test.expected_constants.len());
 
-        for (idx, constant) in byte_code.constants.iter().enumerate() {
-            match constant {
-                crate::eval::value::Value::Int(value) => {
-                    assert_eq!(*value, test.expected_constants[idx])
-                }
-                _ => unreachable!(),
-            }
-        }
+        assert_eq!(test.expected_constants, byte_code.constants)
     }
 }
 
@@ -130,11 +127,16 @@ pub fn test_integer_arithmetic() {
 
 #[test]
 pub fn test_boolean_expression() {
+    let empty: Vec<&str> = Vec::new();
     let tests = &[
-        CompilerTestCase::new("true", &[], &[(OpCode::OpTrue, &[]), (OpCode::OpPop, &[])]),
+        CompilerTestCase::new(
+            "true",
+            &empty,
+            &[(OpCode::OpTrue, &[]), (OpCode::OpPop, &[])],
+        ),
         CompilerTestCase::new(
             "false",
-            &[],
+            &empty,
             &[(OpCode::OpFalse, &[]), (OpCode::OpPop, &[])],
         ),
         CompilerTestCase::new(
@@ -179,7 +181,7 @@ pub fn test_boolean_expression() {
         ),
         CompilerTestCase::new(
             "true == false",
-            &[],
+            &empty,
             &[
                 (OpCode::OpTrue, &[]),
                 (OpCode::OpFalse, &[]),
@@ -189,7 +191,7 @@ pub fn test_boolean_expression() {
         ),
         CompilerTestCase::new(
             "true != false",
-            &[],
+            &empty,
             &[
                 (OpCode::OpTrue, &[]),
                 (OpCode::OpFalse, &[]),
@@ -199,7 +201,7 @@ pub fn test_boolean_expression() {
         ),
         CompilerTestCase::new(
             "!true",
-            &[],
+            &empty,
             &[
                 (OpCode::OpTrue, &[]),
                 (OpCode::OpBang, &[]),
@@ -298,4 +300,162 @@ fn test_global_let_statements() {
         ),
     ];
     run_compiler_test(tests)
+}
+
+#[test]
+fn test_string_expressions() {
+    let tests = &[
+        CompilerTestCase::new(
+            r#""monkey""#,
+            &["monkey"],
+            &[(OpCode::OpConstant, &[0]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new(
+            r#""mon" + "key""#,
+            &["mon", "key"],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpAdd, &[]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+    ];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_array_literals() {
+    let empty: Vec<&str> = Vec::new();
+    let tests = &[
+        CompilerTestCase::new(
+            "[]",
+            &empty,
+            &[(OpCode::OpArray, &[0]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new(
+            "[[1,2,3]]",
+            &[1, 2, 3],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpArray, &[3]),
+                (OpCode::OpArray, &[1]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            "[1,2,3]",
+            &[1, 2, 3],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpArray, &[3]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            "[1 + 2, 3 - 4, 5 * 6]",
+            &[1, 2, 3, 4, 5, 6],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpAdd, &[]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpConstant, &[3]),
+                (OpCode::OpSub, &[]),
+                (OpCode::OpConstant, &[4]),
+                (OpCode::OpConstant, &[5]),
+                (OpCode::OpMul, &[]),
+                (OpCode::OpArray, &[3]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+    ];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_hash_literals() {
+    let empty: Vec<&str> = Vec::new();
+    let tests = &[
+        CompilerTestCase::new(
+            "{}",
+            &empty,
+            &[(OpCode::OpHash, &[0]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new(
+            "{1:2, 3:4, 5:6}",
+            &[1, 2, 3, 4, 5, 6],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpConstant, &[3]),
+                (OpCode::OpConstant, &[4]),
+                (OpCode::OpConstant, &[5]),
+                (OpCode::OpHash, &[6]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            "{1:2+3, 4:5*6}",
+            &[1, 2, 3, 4, 5, 6],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpAdd, &[]),
+                (OpCode::OpConstant, &[3]),
+                (OpCode::OpConstant, &[4]),
+                (OpCode::OpConstant, &[5]),
+                (OpCode::OpMul, &[]),
+                (OpCode::OpHash, &[4]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+    ];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_index_expression() {
+    let tests = &[
+        CompilerTestCase::new(
+            "[1,2,3][1+1]",
+            &[1, 2, 3, 1, 1],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpArray, &[3]),
+                (OpCode::OpConstant, &[3]),
+                (OpCode::OpConstant, &[4]),
+                (OpCode::OpAdd, &[]),
+                (OpCode::OpIndex, &[]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            "{1: 2}[2 - 1]",
+            &[1, 2, 2, 1],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpHash, &[2]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpConstant, &[3]),
+                (OpCode::OpSub, &[]),
+                (OpCode::OpIndex, &[]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+    ];
+
+    run_compiler_test(tests);
 }

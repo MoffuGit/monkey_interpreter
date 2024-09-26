@@ -1,8 +1,9 @@
-use crate::code;
 use crate::code::OpCode;
+use crate::code::{self};
 use crate::compiler::ByteCode;
 use crate::eval::value::Value;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
 
@@ -125,12 +126,81 @@ impl Vm {
                     let value = self.globals.borrow_mut()[global_idx as usize].clone();
                     self.push(value)?;
                 }
+                OpCode::OpArray => {
+                    let len =
+                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+                    ip += 2;
+                    let start = self.sp - len as usize;
+                    let array = self.build_array(start, self.sp);
+                    for _ in start..self.sp {
+                        self.pop()?;
+                    }
+                    self.push(array)?;
+                }
+                OpCode::OpHash => {
+                    let len =
+                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+
+                    ip += 2;
+
+                    let hash = self.build_hash(self.sp - len as usize, self.sp);
+
+                    for _ in self.sp - len as usize..self.sp {
+                        self.pop()?;
+                    }
+
+                    self.push(hash)?;
+                }
+                OpCode::OpIndex => {
+                    let idx = self.pop()?;
+                    let lhs = self.pop()?;
+
+                    let value = self.execute_index_expression(idx, lhs);
+                    self.push(value)?;
+                }
                 _ => (),
             };
             ip += 1;
         }
 
         Ok(())
+    }
+
+    fn execute_index_expression(&mut self, idx: Value, lhs: Value) -> Value {
+        match lhs {
+            Value::Array(arr) => {
+                if let Value::Int(idx) = idx {
+                    arr.get(idx as usize).unwrap_or(&Value::Null).clone()
+                } else {
+                    Value::Null
+                }
+            }
+            Value::Hash(hash) => hash.get(&idx).unwrap_or(&Value::Null).clone(),
+            _ => Value::Null,
+        }
+    }
+
+    #[allow(clippy::mutable_key_type)]
+    fn build_hash(&mut self, start_idx: usize, end_idx: usize) -> Value {
+        let mut hash = HashMap::new();
+        let mut idx = start_idx;
+        while idx < end_idx {
+            let key = self.stack[idx].clone();
+            let value = self.stack[idx + 1].clone();
+
+            hash.insert(key, value);
+
+            idx += 2;
+        }
+        Value::Hash(hash)
+    }
+
+    fn build_array(&mut self, start_idx: usize, end_idx: usize) -> Value {
+        Value::Array(
+            (start_idx..end_idx)
+                .map(|idx| self.stack[idx].clone())
+                .collect::<Vec<Value>>(),
+        )
     }
 
     fn is_truthy(&mut self, value: Value) -> bool {
@@ -200,10 +270,28 @@ impl Vm {
             (Value::Int(right), Value::Int(left)) => {
                 self.execute_binary_integer_operation(op, right, left)
             }
+            (Value::String(right), Value::String(left)) => {
+                self.execute_binary_str_operation(op, &right, &left)
+            }
             (right, left) => Err(VmError::new(format!(
                 "unsupported values for binary operation: {} {}",
                 right, left,
             ))),
+        }
+    }
+
+    fn execute_binary_str_operation(
+        &mut self,
+        op: OpCode,
+        right: &str,
+        left: &str,
+    ) -> Result<(), VmError> {
+        if op == OpCode::OpAdd {
+            self.push(format!("{}{}", left, right))
+        } else {
+            Err(VmError::new(
+                "You only can add string, any other operatio it's invalid",
+            ))
         }
     }
 

@@ -382,6 +382,7 @@ fn test_eval_arrray_index_expression() {
     });
 }
 
+#[allow(clippy::mutable_key_type)]
 #[test]
 fn test_hash_literals() {
     let input = r#"let two = "two";

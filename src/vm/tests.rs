@@ -4,6 +4,7 @@ use crate::eval::value::Value;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::vm::Vm;
+use std::collections::HashMap;
 
 fn parse(input: String) -> Program {
     let lexer = Lexer::new(input.chars().collect());
@@ -127,6 +128,70 @@ fn test_global_let_statements() {
         VmTestCase::new("let one = 1; one", 1),
         VmTestCase::new("let one = 1; let two = 2; one + two", 3),
         VmTestCase::new("let one = 1; let two = one + one; one + two", 3),
+    ];
+
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_string_expression() {
+    let tests = vec![
+        VmTestCase::new(r#""monkey""#, "monkey"),
+        VmTestCase::new(r#""mon" + "key""#, "monkey"),
+        VmTestCase::new(r#""mon" + "key" + "love" + "bananas""#, "monkeylovebananas"),
+    ];
+
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_array_literals() {
+    let empty: Vec<Value> = vec![];
+    let tests = vec![
+        VmTestCase::new("[]", empty),
+        VmTestCase::new("[1,2,3]", vec![1, 2, 3]),
+        VmTestCase::new("[1 + 2,3*4,5+6]", vec![3, 12, 11]),
+        VmTestCase::new("[[1,2,3]]", vec![vec![1, 2, 3]]),
+    ];
+
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_hash_literals() {
+    let tests = vec![
+        VmTestCase::new("{}", HashMap::new()),
+        VmTestCase::new(
+            "{1:2, 2:3}",
+            HashMap::from([
+                (Value::Int(1), Value::Int(2)),
+                (Value::Int(2), Value::Int(3)),
+            ]),
+        ),
+        VmTestCase::new(
+            "{1+1:2*2, 3+3:4*4}",
+            HashMap::from([
+                (Value::Int(2), Value::Int(4)),
+                (Value::Int(6), Value::Int(16)),
+            ]),
+        ),
+    ];
+    run_vm_test(tests)
+}
+
+#[test]
+fn test_index_expression() {
+    let tests = vec![
+        VmTestCase::new("[1,2,3][1]", 2),
+        VmTestCase::new("[1,2,3][0 + 2]", 3),
+        VmTestCase::new("[[1,2,3]][0][0]", 1),
+        VmTestCase::new("[][0]", Value::Null),
+        VmTestCase::new("[1,2,3][99]", Value::Null),
+        VmTestCase::new("[1,2,3][-1]", Value::Null),
+        VmTestCase::new("{ 1:2,3:4 }[1]", 2),
+        VmTestCase::new("{ 1:2,3:4 }[1 + 2]", 4),
+        VmTestCase::new("{ 1: 2 }[0]", Value::Null),
+        VmTestCase::new("{  }[0]", Value::Null),
     ];
 
     run_vm_test(tests);

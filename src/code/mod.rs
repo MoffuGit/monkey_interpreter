@@ -99,6 +99,9 @@ pub enum OpCode {
     OpNull,
     OpGetGlobal,
     OpSetGlobal,
+    OpArray,
+    OpHash,
+    OpIndex,
 }
 
 #[derive(Debug)]
@@ -144,6 +147,9 @@ impl From<OpCode> for Definition {
             OpCode::OpNull => Definition::new("OpNull"),
             OpCode::OpGetGlobal => Definition::new("OpGetGlobal").width(vec![2]),
             OpCode::OpSetGlobal => Definition::new("OpSetGlobal").width(vec![2]),
+            OpCode::OpArray => Definition::new("OpArray").width(vec![2]),
+            OpCode::OpHash => Definition::new("OpHash").width(vec![2]),
+            OpCode::OpIndex => Definition::new("OpIndex"),
         }
     }
 }
@@ -171,6 +177,9 @@ impl TryFrom<u8> for OpCode {
             15 => OpCode::OpNull,
             16 => OpCode::OpGetGlobal,
             17 => OpCode::OpSetGlobal,
+            18 => OpCode::OpArray,
+            19 => OpCode::OpHash,
+            20 => OpCode::OpIndex,
             _ => return Err(()),
         })
     }

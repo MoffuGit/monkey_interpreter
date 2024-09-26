@@ -41,6 +41,35 @@ impl From<bool> for Value {
     }
 }
 
+impl From<&'static str> for Value {
+    fn from(value: &'static str) -> Self {
+        Value::String(value.to_string())
+    }
+}
+
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Value::String(value)
+    }
+}
+
+impl From<HashMap<Value, Value>> for Value {
+    fn from(value: HashMap<Value, Value>) -> Self {
+        Value::Hash(value)
+    }
+}
+
+impl<T: Into<Value> + Clone> From<Vec<T>> for Value {
+    fn from(values: Vec<T>) -> Self {
+        Value::Array(
+            values
+                .iter()
+                .map(|value| std::convert::Into::<Value>::into(value.clone()))
+                .collect::<Vec<Value>>(),
+        )
+    }
+}
+
 impl Eq for Value {}
 
 impl Hash for Value {
@@ -86,7 +115,16 @@ impl Display for Value {
                         .join(",")
                 )
             }
-            Value::Hash(_) => todo!(),
+            Value::Hash(hash) => {
+                write!(
+                    f,
+                    "{{{}}}",
+                    hash.iter()
+                        .map(|(key, value)| format!("{}:{}", key, value))
+                        .collect::<Vec<String>>()
+                        .join(",")
+                )
+            }
         }
     }
 }

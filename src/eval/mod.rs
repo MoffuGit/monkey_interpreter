@@ -182,6 +182,7 @@ impl Eval {
                 self.eval_index_expression(lhs, index)
             }
             Expression::Hash(pairs) => {
+                #[allow(clippy::mutable_key_type)]
                 let hash = pairs
                     .iter()
                     .map(|(k, v)| {
@@ -213,9 +214,10 @@ impl Eval {
         }
     }
 
+    #[allow(clippy::mutable_key_type)]
     fn eval_hash_index_expression(
         &mut self,
-        lhs: HashMap<Value, Value>,
+        #[allow(clippy::mutable_key_type)] lhs: HashMap<Value, Value>,
         idx: Value,
     ) -> Result<Value, EvalError> {
         Ok(match lhs.get(&idx) {
