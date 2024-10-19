@@ -5,6 +5,7 @@ use std::hash::Hash;
 use std::rc::Rc;
 
 use crate::ast::statement::Statement;
+use crate::code::Instructions;
 
 use super::environment::Environment;
 use super::EvalError;
@@ -27,6 +28,10 @@ pub enum Value {
     },
     Builtin(BuiltinFuncion),
     Hash(HashMap<Value, Value>),
+    CompiledFunction {
+        instructions: Instructions,
+        num_locals: usize,
+    },
 }
 
 impl From<i64> for Value {
@@ -125,6 +130,9 @@ impl Display for Value {
                         .join(",")
                 )
             }
+            Value::CompiledFunction { instructions, .. } => {
+                write!(f, "CompiledFunction[{}]", instructions)
+            }
         }
     }
 }
@@ -142,6 +150,7 @@ impl Value {
             Value::Builtin(_) => "BUILTIN".into(),
             Value::Array(_) => "ARRAY".into(),
             Value::Hash(_) => "HASH".into(),
+            Value::CompiledFunction { .. } => "COMPILED_FUNCTION_OBJ".into(),
         }
     }
 }

@@ -1,15 +1,20 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::rc::Rc;
+use std::usize;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum SymbolScope {
     GlobalScope,
+    LocalScope,
 }
 
 impl Display for SymbolScope {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SymbolScope::GlobalScope => write!(f, "GLOBAL"),
+            SymbolScope::LocalScope => write!(f, "LOCAL"),
         }
     }
 }
@@ -18,11 +23,11 @@ impl Display for SymbolScope {
 pub struct Symbol {
     pub name: String,
     pub scope: SymbolScope,
-    pub index: i64,
+    pub index: usize,
 }
 
 impl Symbol {
-    pub fn new(name: impl Into<String>, scope: SymbolScope, index: i64) -> Self {
+    pub fn new(name: impl Into<String>, scope: SymbolScope, index: usize) -> Self {
         Symbol {
             name: name.into(),
             scope,
@@ -31,29 +36,49 @@ impl Symbol {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct SymbolTable {
+    pub outer: Option<Rc<RefCell<SymbolTable>>>,
     pub store: HashMap<String, Symbol>,
-    num_definitions: i64,
+    pub num_definitions: usize,
 }
 
 impl SymbolTable {
     pub fn new() -> Self {
         let store = HashMap::new();
         SymbolTable {
+            outer: None,
+            store,
+            num_definitions: 0,
+        }
+    }
+
+    pub fn new_with_enclosed(outer: SymbolTable) -> Self {
+        let store = HashMap::new();
+        SymbolTable {
+            outer: Some(Rc::new(RefCell::new(outer))),
             store,
             num_definitions: 0,
         }
     }
 
     pub fn define(&mut self, name: impl Into<String>) -> Symbol {
-        let symbol = Symbol::new(name, SymbolScope::GlobalScope, self.num_definitions);
+        let scope = if self.outer.is_some() {
+            SymbolScope::LocalScope
+        } else {
+            SymbolScope::GlobalScope
+        };
+        let symbol = Symbol::new(name, scope, self.num_definitions);
         self.store.insert(symbol.name.clone(), symbol.clone());
         self.num_definitions += 1;
         symbol
     }
 
     pub fn resolve(&mut self, name: &str) -> Option<Symbol> {
-        self.store.get(name).cloned()
+        self.store.get(name).cloned().or(self
+            .outer
+            .clone()
+            .and_then(|store| store.borrow_mut().resolve(name)))
     }
 }
 

@@ -1,9 +1,9 @@
 use std::fmt::Display;
-use std::ops::{Index, Range, RangeFrom};
+use std::ops::{Index, Range, RangeFrom, RangeTo};
 
 #[cfg(test)]
 mod tests;
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Instructions(pub Vec<u8>);
 
 impl Instructions {
@@ -14,6 +14,17 @@ impl Instructions {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl From<Vec<(OpCode, Vec<i64>)>> for Instructions {
+    fn from(value: Vec<(OpCode, Vec<i64>)>) -> Self {
+        concat_instructions(
+            &value
+                .iter()
+                .map(|(op, operands)| make(*op, operands))
+                .collect::<Vec<Instructions>>(),
+        )
     }
 }
 
@@ -29,6 +40,14 @@ impl Index<RangeFrom<usize>> for Instructions {
     type Output = [u8];
 
     fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl Index<RangeTo<usize>> for Instructions {
+    type Output = [u8];
+
+    fn index(&self, index: RangeTo<usize>) -> &Self::Output {
         &self.0[index]
     }
 }
@@ -62,8 +81,8 @@ impl Display for Instructions {
                 }
             };
             let (operands, read) = read_operands(&definition, self[idx + 1..].to_vec());
-            writeln!(f, "{:04} {}", idx, fmt_intruction(definition, &operands))?;
-            idx += 1 + read as usize;
+            write!(f, "{:04} {} ", idx, fmt_intruction(definition, &operands))?;
+            idx += 1 + read;
         }
         Ok(())
     }
@@ -102,6 +121,11 @@ pub enum OpCode {
     OpArray,
     OpHash,
     OpIndex,
+    OpCall,
+    OpReturnValue,
+    OpReturn,
+    OpGetLocal,
+    OpSetLocal,
 }
 
 #[derive(Debug)]
@@ -150,6 +174,11 @@ impl From<OpCode> for Definition {
             OpCode::OpArray => Definition::new("OpArray").width(vec![2]),
             OpCode::OpHash => Definition::new("OpHash").width(vec![2]),
             OpCode::OpIndex => Definition::new("OpIndex"),
+            OpCode::OpCall => Definition::new("OpCall"),
+            OpCode::OpReturnValue => Definition::new("OpReturnValue"),
+            OpCode::OpReturn => Definition::new("OpReturn"),
+            OpCode::OpGetLocal => Definition::new("OpGetLocal").width(vec![1]),
+            OpCode::OpSetLocal => Definition::new("OpSetLocal").width(vec![1]),
         }
     }
 }
@@ -180,23 +209,31 @@ impl TryFrom<u8> for OpCode {
             18 => OpCode::OpArray,
             19 => OpCode::OpHash,
             20 => OpCode::OpIndex,
+            21 => OpCode::OpCall,
+            22 => OpCode::OpReturnValue,
+            23 => OpCode::OpReturn,
+            24 => OpCode::OpGetLocal,
+            25 => OpCode::OpSetLocal,
             _ => return Err(()),
         })
     }
 }
 
-pub fn read_operands(definition: &Definition, instruction: Vec<u8>) -> (Vec<i64>, u8) {
+pub fn read_operands(definition: &Definition, instruction: Vec<u8>) -> (Vec<i64>, usize) {
     let mut operands = vec![];
-    let mut offset = 0_u8;
+    let mut offset = 0;
 
     for width in &definition.operand_widths {
         match width {
             2 => {
-                let instruction = instruction[offset as usize..(offset + 2) as usize]
-                    .try_into()
-                    .unwrap();
+                let instruction = instruction[offset..(offset + 2)].try_into().unwrap();
                 operands.push(u16::from_be_bytes(instruction) as i64);
                 offset += 2
+            }
+            1 => {
+                let instruction = instruction[offset..offset + 1].try_into().unwrap();
+                operands.push(u8::from_be_bytes(instruction) as i64);
+                offset += 1;
             }
             _ => unreachable!(),
         }
@@ -214,6 +251,9 @@ pub fn make(op: OpCode, operands: &[i64]) -> Instructions {
             2 => {
                 let bytes = (*operand as u16).to_be_bytes();
                 instruction.extend(bytes.iter());
+            }
+            1 => {
+                instruction.push(*operand as u8);
             }
             _ => unreachable!(),
         }

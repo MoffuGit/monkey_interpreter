@@ -196,3 +196,103 @@ fn test_index_expression() {
 
     run_vm_test(tests);
 }
+
+#[test]
+fn test_calling_functions_without_arguments() {
+    let tests = vec![
+        VmTestCase::new(
+            r#"let fivePlusTen = fn() { 10 / 5; };
+                fivePlusTen();
+                "#,
+            2,
+        ),
+        VmTestCase::new(
+            r#"let one = fn() { 1; };
+        let two = fn() { 2; };
+        one() + two()"#,
+            3,
+        ),
+        VmTestCase::new(
+            r#"let a = fn() { 1 };
+                let b = fn() { a() + 1 };
+                let c = fn() { b() + 1 };
+                c()"#,
+            3,
+        ),
+        VmTestCase::new(
+            r#"let earlyExit = fn() { return 99; 100; };
+                earlyExit();"#,
+            99,
+        ),
+        VmTestCase::new(
+            r#"let earlyExit = fn() { return 99; return 100; };
+                earlyExit()"#,
+            99,
+        ),
+        VmTestCase::new(
+            r#"let noReturn = fn() { };
+        noReturn();"#,
+            Value::Null,
+        ),
+        VmTestCase::new(
+            r#"let noReturn = fn() { };
+        let noReturnTwo = fn() { noReturn() };
+        noReturn();
+        noReturnTwo();"#,
+            Value::Null,
+        ),
+        VmTestCase::new(
+            r#"let returnsOne = fn() { 1; };
+        let returnsOneReturner = fn() { returnsOne; };
+        returnsOneReturner()();"#,
+            1,
+        ),
+    ];
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_calling_functions_with_bindings() {
+    let tests = vec![
+        VmTestCase::new(
+            r#"let one = fn() { let one = 1; one; };
+        one();
+        "#,
+            1,
+        ),
+        VmTestCase::new(
+            r#"let oneAndTwo = fn() { let one = 1; let two = 2; one + two };
+                oneAndTwo();
+                "#,
+            3,
+        ),
+        VmTestCase::new(
+            r#"let oneAndTwo = fn() { let one = 1; let two = 2; one + two };
+                let threeAndFour = fn() {
+                    let three = 3;
+                    let four = 4;
+                    three + four
+                }
+
+                oneAndTwo() + threeAndFour();
+                "#,
+            10,
+        ),
+        VmTestCase::new(
+            r#"let firstFoobar = fn() {let foobar = 50; foobar;};
+        let secondFoobar = fn() {let foobar = 100; foobar;};
+        firstFoobar() + secondFoobar();
+        "#,
+            150,
+        ),
+        VmTestCase::new(
+            r#"let globalSeed = 50;
+        let minusOne = fn() { let num = 1; globalSeed - num; };
+        let minusTwo = fn() { let num = 2; globalSeed - num; };
+        minusOne() + minusTwo();
+        "#,
+            97,
+        ),
+    ];
+    run_vm_test(tests);
+}

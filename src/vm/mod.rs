@@ -1,5 +1,4 @@
 use crate::code::OpCode;
-use crate::code::{self};
 use crate::compiler::ByteCode;
 use crate::eval::value::Value;
 use std::cell::RefCell;
@@ -7,6 +6,9 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
 
+use self::frame::Frame;
+
+mod frame;
 #[cfg(test)]
 mod tests;
 
@@ -27,21 +29,39 @@ impl Display for VmError {
 }
 
 const STACK_SIZE: usize = 2048_usize;
+const MAX_FRAMES: usize = 1024_usize;
 
+#[derive(Debug)]
 pub struct Vm {
     constans: Vec<Value>,
-    instructions: code::Instructions,
     stack: Vec<Value>,
     sp: usize,
     pub last_popped_element: Option<Value>,
     globals: Rc<RefCell<Vec<Value>>>,
+    frames: Vec<Frame>,
 }
 
 impl Vm {
+    fn current_frame(&mut self) -> Result<&mut Frame, VmError> {
+        self.frames
+            .last_mut()
+            .ok_or(VmError::new("the frames are empty"))
+    }
+
+    fn push_frame(&mut self, frame: Frame) {
+        self.frames.push(frame);
+    }
+
+    fn pop_frame(&mut self) -> Option<Frame> {
+        self.frames.pop()
+    }
+
     pub fn new(byte_code: ByteCode) -> Self {
+        let mut frames: Vec<Frame> = Vec::with_capacity(MAX_FRAMES);
+        frames.push(Frame::new(byte_code.instructions.clone(), 0));
         Vm {
             constans: byte_code.constants.clone(),
-            instructions: byte_code.instructions.clone(),
+            frames,
             stack: Vec::with_capacity(STACK_SIZE),
             last_popped_element: None,
             sp: 0,
@@ -56,19 +76,20 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> Result<(), VmError> {
-        let mut ip = 0;
-
-        while ip < self.instructions.len() {
-            let op = match OpCode::try_from(self.instructions[ip]) {
+        while self.current_frame()?.ip < self.current_frame()?.function.len() {
+            let ip = self.current_frame()?.ip;
+            let instructions = self.current_frame()?.function.clone();
+            let op = match OpCode::try_from(instructions[ip]) {
                 Ok(op) => op,
                 Err(_) => return Err(VmError::new("the u8 isnt a valid OpCode")),
             };
+            println!("{op:?}");
 
             match op {
                 OpCode::OpConstant => {
                     let const_idx =
-                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
-                    ip += 2;
+                        u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
+                    self.current_frame()?.ip += 2;
                     self.push(self.constans[const_idx as usize].clone())?;
                 }
                 OpCode::OpAdd | OpCode::OpSub | OpCode::OpMul | OpCode::OpDiv => {
@@ -92,17 +113,17 @@ impl Vm {
                 OpCode::OpMinus => self.execute_minus_operator()?,
                 OpCode::OpJump => {
                     let position =
-                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
-                    ip = (position - 1) as usize;
+                        u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
+                    self.current_frame()?.ip = (position - 1) as usize;
                 }
                 OpCode::OpJumpNotTruthy => {
                     let position =
-                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+                        u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
 
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
                     let condition = self.pop()?;
                     if !self.is_truthy(condition) {
-                        ip = (position - 1) as usize;
+                        self.current_frame()?.ip = (position - 1) as usize;
                     }
                 }
                 OpCode::OpNull => {
@@ -110,8 +131,8 @@ impl Vm {
                 }
                 OpCode::OpSetGlobal => {
                     let global_idx =
-                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
-                    ip += 2;
+                        u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
+                    self.current_frame()?.ip += 2;
                     let value = self.pop()?;
                     if self.globals.borrow().len() == global_idx as usize {
                         self.globals.borrow_mut().push(value);
@@ -121,15 +142,14 @@ impl Vm {
                 }
                 OpCode::OpGetGlobal => {
                     let global_idx =
-                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
-                    ip += 2;
+                        u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
+                    self.current_frame()?.ip += 2;
                     let value = self.globals.borrow_mut()[global_idx as usize].clone();
                     self.push(value)?;
                 }
                 OpCode::OpArray => {
-                    let len =
-                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
-                    ip += 2;
+                    let len = u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
+                    self.current_frame()?.ip += 2;
                     let start = self.sp - len as usize;
                     let array = self.build_array(start, self.sp);
                     for _ in start..self.sp {
@@ -138,10 +158,9 @@ impl Vm {
                     self.push(array)?;
                 }
                 OpCode::OpHash => {
-                    let len =
-                        u16::from_be_bytes(self.instructions[ip + 1..ip + 3].try_into().unwrap());
+                    let len = u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
 
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
 
                     let hash = self.build_hash(self.sp - len as usize, self.sp);
 
@@ -158,9 +177,70 @@ impl Vm {
                     let value = self.execute_index_expression(idx, lhs);
                     self.push(value)?;
                 }
-                _ => (),
+                OpCode::OpCall => {
+                    if let Value::CompiledFunction {
+                        instructions: function,
+                        num_locals,
+                    } = &self.stack[self.sp - 1].clone()
+                    {
+                        let frame = Frame::new(function.clone(), self.sp);
+                        self.push_frame(frame);
+                        for _ in 0..*num_locals {
+                            self.stack.push(Value::Null);
+                        }
+                        self.sp += num_locals;
+                        continue;
+                    } else {
+                        return Err(VmError::new(format!(
+                            "Calling non-function: {:?}",
+                            &self.stack[self.sp - 1].clone(),
+                        )));
+                    }
+                }
+                OpCode::OpReturn => {
+                    if let Some(frame) = self.pop_frame() {
+                        println!("self.sp: {}", self.sp);
+                        println!("frame.base_pointer: {}", frame.base_pointer);
+                        for _ in 0..self.sp - frame.base_pointer {
+                            self.pop()?;
+                        }
+                    };
+                    self.push(Value::Null)?;
+                }
+                OpCode::OpReturnValue => {
+                    // println!("stack from the start: {:?}", self.stack);
+                    let return_value = self.pop()?;
+                    if let Some(frame) = self.pop_frame() {
+                        println!("base_pointer: {}", frame.base_pointer);
+                        println!("sp: {}", self.sp);
+                        for _ in 0..self.sp - frame.base_pointer {
+                            self.pop()?;
+                        }
+                    }
+                    self.pop()?;
+                    self.push(return_value)?;
+                    // println!("stack from the end: {:?}", self.stack);
+                }
+                OpCode::OpSetLocal => {
+                    let local_idx =
+                        u8::from_be_bytes(instructions[ip + 1..ip + 2].try_into().unwrap());
+                    self.current_frame()?.ip += 1;
+                    let base_pointer = self.current_frame()?.base_pointer;
+                    let value = self.pop()?;
+                    self.stack[base_pointer + local_idx as usize] = value;
+                }
+                OpCode::OpGetLocal => {
+                    let local_idx =
+                        u8::from_be_bytes(instructions[ip + 1..ip + 2].try_into().unwrap());
+                    self.current_frame()?.ip += 1;
+                    let base_pointer = self.current_frame()?.base_pointer;
+                    if let Some(value) = self.stack.get(base_pointer + local_idx as usize).cloned()
+                    {
+                        self.push(value)?;
+                    }
+                }
             };
-            ip += 1;
+            self.current_frame()?.ip += 1;
         }
 
         Ok(())

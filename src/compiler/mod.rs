@@ -8,7 +8,7 @@ use crate::ast::expression::Expression;
 use crate::ast::operator::InfixOperator;
 use crate::ast::program::Program;
 use crate::ast::statement::Statement;
-use crate::code::{Instructions, OpCode};
+use crate::code::{concat_instructions, make, Instructions, OpCode};
 use crate::eval::value::Value;
 use crate::{code, eval::value};
 use std::cell::RefCell;
@@ -35,11 +35,17 @@ impl Display for CompilerError {
 }
 
 pub struct Compiler {
-    instructions: code::Instructions,
     constants: Rc<RefCell<Vec<value::Value>>>,
+    symbol_table: Rc<RefCell<SymbolTable>>,
+    scopes: Vec<CompilationScope>,
+    scope_idx: usize,
+}
+
+#[derive(Default)]
+pub struct CompilationScope {
+    instructions: Instructions,
     last_instruction: Option<EmittedInstruction>,
     previous_instruction: Option<EmittedInstruction>,
-    symbol_table: Rc<RefCell<SymbolTable>>,
 }
 
 pub struct ByteCode {
@@ -47,21 +53,57 @@ pub struct ByteCode {
     pub constants: Vec<value::Value>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EmittedInstruction {
     op: OpCode,
-    position: i64,
+    position: usize,
 }
 
 impl Compiler {
+    pub fn current_scope(&mut self) -> &mut CompilationScope {
+        &mut self.scopes[self.scope_idx]
+    }
+    pub fn leave_scope(&mut self) -> Instructions {
+        let instructions = self.current_instructions();
+        let outer_symbol_table = self
+            .symbol_table
+            .borrow()
+            .outer
+            .clone()
+            .expect("should exist an outer symbol table");
+        self.symbol_table = outer_symbol_table;
+        self.scopes.pop();
+        self.scope_idx -= 1;
+        instructions
+    }
+    pub fn enter_scope(&mut self) {
+        let scope = CompilationScope::default();
+        let enclosed_symbol_table = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(
+            self.symbol_table.borrow().clone(),
+        )));
+        self.symbol_table = enclosed_symbol_table;
+        self.scopes.push(scope);
+        self.scope_idx += 1;
+    }
     pub fn new() -> Self {
         Compiler {
-            instructions: Instructions(vec![]),
             constants: Rc::new(RefCell::new(vec![])),
-            last_instruction: None,
-            previous_instruction: None,
             symbol_table: Rc::new(RefCell::new(SymbolTable::new())),
+            scope_idx: 0,
+            scopes: vec![CompilationScope::default()],
         }
+    }
+
+    pub fn current_instructions(&mut self) -> Instructions {
+        self.current_scope().instructions.clone()
+    }
+
+    pub fn add_instruction(&mut self, instructions: Instructions) -> usize {
+        let position_new_instruction = self.current_instructions().len();
+        let updated_instuctions = concat_instructions(&[self.current_instructions(), instructions]);
+
+        self.current_scope().instructions = updated_instuctions;
+        position_new_instruction
     }
 
     pub fn new_with_state(
@@ -91,9 +133,16 @@ impl Compiler {
                 self.compile_expression(value)?;
 
                 let symbol = self.symbol_table.borrow_mut().define(name);
-                self.emit(OpCode::OpSetGlobal, &[symbol.index]);
+                let scope = match symbol.scope {
+                    symbol_table::SymbolScope::GlobalScope => OpCode::OpSetGlobal,
+                    symbol_table::SymbolScope::LocalScope => OpCode::OpSetLocal,
+                };
+                self.emit(scope, &[symbol.index as i64]);
             }
-            Statement::Return(_) => todo!(),
+            Statement::Return(expression) => {
+                self.compile_expression(expression)?;
+                self.emit(OpCode::OpReturnValue, &[]);
+            }
             Statement::Block(statements) => {
                 for statement in statements {
                     self.compile_statement(statement)?;
@@ -112,11 +161,15 @@ impl Compiler {
             }
             Expression::Identifier(name) => {
                 let symbol = self.symbol_table.borrow_mut().resolve(&name);
-                if symbol.is_none() {
+                if let Some(symbol) = symbol {
+                    let scope = match symbol.scope {
+                        symbol_table::SymbolScope::GlobalScope => OpCode::OpGetGlobal,
+                        symbol_table::SymbolScope::LocalScope => OpCode::OpGetLocal,
+                    };
+                    self.emit(scope, &[symbol.index as i64]);
+                } else {
                     return Err(CompilerError::new(format!("undefined variable: {}", name)));
-                }
-                let symbol = symbol.unwrap();
-                self.emit(OpCode::OpGetGlobal, &[symbol.index]);
+                };
             }
             Expression::String(value) => {
                 let string = Value::String(value);
@@ -168,30 +221,50 @@ impl Compiler {
                 self.compile_expression(*condition)?;
                 let jump_not_truthy_pos = self.emit(OpCode::OpJumpNotTruthy, &[9999]);
                 self.compile_statement(Statement::Block(consequence))?;
-                if self.last_instruction_is_pop() {
+                if self.last_instruction_is(OpCode::OpPop) {
                     self.remove_last_pop();
                 }
 
                 let jump_pos = self.emit(OpCode::OpJump, &[9999]);
-                let after_consequence_pos = self.instructions.len();
+                let after_consequence_pos = self.current_scope().instructions.len();
                 self.change_operand(jump_not_truthy_pos, &[after_consequence_pos as i64]);
 
                 if let Some(alternative) = alternative {
                     self.compile_statement(Statement::Block(alternative))?;
-                    if self.last_instruction_is_pop() {
+                    if self.last_instruction_is(OpCode::OpPop) {
                         self.remove_last_pop();
                     }
                 } else {
                     self.emit(OpCode::OpNull, &[]);
                 }
-                let after_aternative_pos = self.instructions.len();
+                let after_aternative_pos = self.current_scope().instructions.len();
                 self.change_operand(jump_pos, &[after_aternative_pos as i64]);
             }
-            Expression::Fn { parameters, body } => todo!(),
+            Expression::Fn { parameters, body } => {
+                self.enter_scope();
+                self.compile_statement(Statement::Block(body))?;
+                if self.last_instruction_is(OpCode::OpPop) {
+                    self.replace_last_pop_with_return();
+                }
+                if !self.last_instruction_is(OpCode::OpReturnValue) {
+                    self.emit(OpCode::OpReturn, &[]);
+                }
+                let num_locals = self.symbol_table.borrow().num_definitions;
+                let instructions = self.leave_scope();
+                let compiled_fn = Value::CompiledFunction {
+                    instructions,
+                    num_locals,
+                };
+                let operands = self.add_constant(compiled_fn);
+                self.emit(OpCode::OpConstant, &[operands]);
+            }
             Expression::Call {
                 function,
                 arguments,
-            } => todo!(),
+            } => {
+                self.compile_expression(*function)?;
+                self.emit(OpCode::OpCall, &[]);
+            }
             Expression::Array(values) => {
                 let len = values.len();
                 for value in values {
@@ -218,16 +291,24 @@ impl Compiler {
         Ok(())
     }
 
-    fn replace_instruction(&mut self, position: i64, new_instruction: Instructions) {
+    fn replace_last_pop_with_return(&mut self) {
+        if let Some(last_instruction) = &mut self.current_scope().last_instruction {
+            let last_position = last_instruction.position;
+            last_instruction.op = OpCode::OpReturnValue;
+            self.replace_instruction(last_position, make(OpCode::OpReturnValue, &[]));
+        }
+    }
+
+    fn replace_instruction(&mut self, position: usize, new_instruction: Instructions) {
         let mut idx = 0;
         while idx < new_instruction.0.len() {
-            self.instructions.0[position as usize + idx] = new_instruction.0[idx];
+            self.current_scope().instructions.0[position + idx] = new_instruction.0[idx];
             idx += 1;
         }
     }
 
-    fn change_operand(&mut self, op_position: i64, operand: &[i64]) {
-        let op = OpCode::try_from(self.instructions[op_position as usize]);
+    fn change_operand(&mut self, op_position: usize, operand: &[i64]) {
+        let op = OpCode::try_from(self.current_scope().instructions[op_position]);
         if op.is_err() {
             panic!("your instruction become invalid")
         }
@@ -236,20 +317,27 @@ impl Compiler {
         self.replace_instruction(op_position, new_instruction);
     }
 
-    fn last_instruction_is_pop(&mut self) -> bool {
-        if let Some(last) = &self.last_instruction {
-            last.op == OpCode::OpPop
-        } else {
-            false
+    fn last_instruction_is(&mut self, op: OpCode) -> bool {
+        if self.current_instructions().is_empty() {
+            return false;
         }
+
+        self.current_scope()
+            .last_instruction
+            .as_ref()
+            .is_some_and(|last_instruction| last_instruction.op == op)
     }
 
     fn remove_last_pop(&mut self) {
-        self.instructions = Instructions(
-            self.instructions.0[..self.last_instruction.clone().unwrap().position as usize]
-                .to_vec(),
-        );
-        self.last_instruction = self.previous_instruction.clone();
+        let position = self
+            .current_scope()
+            .last_instruction
+            .clone()
+            .unwrap()
+            .position;
+        let instructions = self.current_scope().instructions[..position].to_vec();
+        self.current_scope().instructions = Instructions(instructions);
+        self.current_scope().last_instruction = self.current_scope().previous_instruction.clone();
     }
 
     fn add_constant(&mut self, value: Value) -> i64 {
@@ -257,29 +345,23 @@ impl Compiler {
         self.constants.borrow_mut().len() as i64 - 1
     }
 
-    fn emit(&mut self, op: OpCode, operands: &[i64]) -> i64 {
+    fn emit(&mut self, op: OpCode, operands: &[i64]) -> usize {
         let instruction = code::make(op, operands);
         let position = self.add_instruction(instruction);
         self.set_last_instruction(op, position);
         position
     }
 
-    fn set_last_instruction(&mut self, op: OpCode, position: i64) {
-        let previous = self.last_instruction.clone();
+    fn set_last_instruction(&mut self, op: OpCode, position: usize) {
+        let previous = &self.current_scope().last_instruction;
         let last = Some(EmittedInstruction { op, position });
-        self.previous_instruction = previous;
-        self.last_instruction = last;
+        self.current_scope().previous_instruction = previous.clone();
+        self.current_scope().last_instruction = last;
     }
 
-    fn add_instruction(&mut self, instructions: Instructions) -> i64 {
-        let position_new_instruction = self.instructions.0.len() as i64;
-        self.instructions.0.extend(instructions.0.iter());
-        position_new_instruction
-    }
-
-    pub fn bytecode(&self) -> ByteCode {
+    pub fn bytecode(&mut self) -> ByteCode {
         ByteCode {
-            instructions: self.instructions.clone(),
+            instructions: self.current_scope().instructions.clone(),
             constants: self.constants.borrow_mut().clone(),
         }
     }

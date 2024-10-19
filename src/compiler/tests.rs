@@ -1,5 +1,5 @@
 use crate::ast::program::Program;
-use crate::code::{self, concat_instructions, OpCode};
+use crate::code::{self, concat_instructions, Instructions, OpCode};
 use crate::eval::value::Value;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -55,7 +55,12 @@ fn run_compiler_test(tests: &[CompilerTestCase]) {
         );
         assert_eq!(&byte_code.constants.len(), &test.expected_constants.len());
 
-        assert_eq!(test.expected_constants, byte_code.constants)
+        test.expected_constants
+            .iter()
+            .zip(byte_code.constants.iter())
+            .for_each(|(expected, value)| {
+                assert_eq!(expected, value, "\nexpected: {}\ngot: {}", expected, value)
+            });
     }
 }
 
@@ -454,6 +459,250 @@ fn test_index_expression() {
                 (OpCode::OpIndex, &[]),
                 (OpCode::OpPop, &[]),
             ],
+        ),
+    ];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_compiler_scopes() {
+    let mut compiler = Compiler::new();
+    assert_eq!(0, compiler.scope_idx);
+    let global_symbl_table = compiler.symbol_table.borrow().clone();
+
+    compiler.emit(OpCode::OpMul, &[]);
+    compiler.enter_scope();
+    assert_eq!(1, compiler.scope_idx);
+    compiler.emit(OpCode::OpDiv, &[]);
+    assert!(compiler
+        .scopes
+        .get(compiler.scope_idx)
+        .is_some_and(|scope| scope.instructions.len() == 1));
+    assert!(compiler
+        .scopes
+        .get(compiler.scope_idx)
+        .is_some_and(|scope| scope
+            .last_instruction
+            .as_ref()
+            .is_some_and(|last_instruction| last_instruction.op == OpCode::OpDiv)));
+    assert!(compiler
+        .symbol_table
+        .borrow()
+        .outer
+        .clone()
+        .is_some_and(|table| table.borrow().clone() == global_symbl_table));
+    compiler.leave_scope();
+    assert_eq!(0, compiler.scope_idx);
+    assert!(compiler.symbol_table.borrow().clone() == global_symbl_table);
+    assert!(compiler.symbol_table.borrow().outer.clone().is_none());
+    compiler.emit(OpCode::OpAdd, &[]);
+    assert!(compiler
+        .scopes
+        .get(compiler.scope_idx)
+        .is_some_and(|scope| scope.instructions.len() == 2));
+    assert!(compiler
+        .scopes
+        .get(compiler.scope_idx)
+        .is_some_and(|scope| scope
+            .last_instruction
+            .as_ref()
+            .is_some_and(|last_instruction| last_instruction.op == OpCode::OpAdd)));
+    assert!(compiler
+        .scopes
+        .get(compiler.scope_idx)
+        .is_some_and(|scope| scope
+            .previous_instruction
+            .as_ref()
+            .is_some_and(|previous_instruction| previous_instruction.op == OpCode::OpMul)));
+}
+
+#[test]
+fn test_functions() {
+    let tests = &[
+        CompilerTestCase::new(
+            "fn() {return 5 + 10}",
+            &[
+                Value::Int(5),
+                Value::Int(10),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(Vec::from([
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpConstant, vec![1]),
+                        (OpCode::OpAdd, vec![]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ])),
+                    num_locals: 0,
+                },
+            ],
+            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new(
+            "fn() { 5 + 10}",
+            &[
+                Value::Int(5),
+                Value::Int(10),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(Vec::from([
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpConstant, vec![1]),
+                        (OpCode::OpAdd, vec![]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ])),
+                    num_locals: 0,
+                },
+            ],
+            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new(
+            "fn() { 1; 2 }",
+            &[
+                Value::Int(1),
+                Value::Int(2),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(Vec::from([
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpPop, vec![]),
+                        (OpCode::OpConstant, vec![1]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ])),
+                    num_locals: 0,
+                },
+            ],
+            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
+        ),
+    ];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_functions_without_return_value() {
+    let tests = &[CompilerTestCase::new(
+        "fn() {}",
+        &[Value::CompiledFunction {
+            instructions: Instructions::from(Vec::from([(OpCode::OpReturn, vec![])])),
+            num_locals: 0,
+        }],
+        &[(OpCode::OpConstant, &[0]), (OpCode::OpPop, &[])],
+    )];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_functions_calls() {
+    let tests = &[
+        CompilerTestCase::new(
+            "fn() { 24 }();",
+            &[
+                Value::Int(24),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(Vec::from([
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ])),
+                    num_locals: 0,
+                },
+            ],
+            &[
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpCall, &[]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            r#"let noArg = fn() { 24 };
+noArg();"#,
+            &[
+                Value::Int(24),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(Vec::from([
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ])),
+                    num_locals: 0,
+                },
+            ],
+            &[
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpGetGlobal, &[0]),
+                (OpCode::OpCall, &[]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+    ];
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_let_statements_scopes() {
+    let tests = &[
+        CompilerTestCase::new(
+            r#"let num = 55;
+fn() { num }
+"#,
+            &[
+                Value::Int(55),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetGlobal, vec![0]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 0,
+                },
+            ],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            r#"fn() {
+let num = 55;
+num
+}"#,
+            &[
+                Value::Int(55),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpSetLocal, vec![0]),
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                },
+            ],
+            &[(OpCode::OpConstant, &[1]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new(
+            r#"fn() {
+let a = 55;
+let b = 77;
+a + b
+}"#,
+            &[
+                Value::Int(55),
+                Value::Int(77),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpSetLocal, vec![0]),
+                        (OpCode::OpConstant, vec![1]),
+                        (OpCode::OpSetLocal, vec![1]),
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpGetLocal, vec![1]),
+                        (OpCode::OpAdd, vec![]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 2,
+                },
+            ],
+            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
         ),
     ];
 
