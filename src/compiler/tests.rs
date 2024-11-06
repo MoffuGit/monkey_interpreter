@@ -43,8 +43,8 @@ fn run_compiler_test(tests: &[CompilerTestCase]) {
         let program = parse(test.input.clone());
         let mut compiler = Compiler::new();
 
-        if compiler.compile_program(program).is_err() {
-            panic!("Compile pgram fail");
+        if let Err(err) = compiler.compile_program(program) {
+            panic!("Compile program fail: {:?}", err);
         };
 
         let byte_code = compiler.bytecode();
@@ -469,7 +469,7 @@ fn test_index_expression() {
 fn test_compiler_scopes() {
     let mut compiler = Compiler::new();
     assert_eq!(0, compiler.scope_idx);
-    let global_symbl_table = compiler.symbol_table.borrow().clone();
+    let global_symbl_table = compiler.symbol_table.clone();
 
     compiler.emit(OpCode::OpMul, &[]);
     compiler.enter_scope();
@@ -491,10 +491,10 @@ fn test_compiler_scopes() {
         .borrow()
         .outer
         .clone()
-        .is_some_and(|table| table.borrow().clone() == global_symbl_table));
+        .is_some_and(|table| table == global_symbl_table));
     compiler.leave_scope();
     assert_eq!(0, compiler.scope_idx);
-    assert!(compiler.symbol_table.borrow().clone() == global_symbl_table);
+    assert!(compiler.symbol_table.clone() == global_symbl_table);
     assert!(compiler.symbol_table.borrow().outer.clone().is_none());
     compiler.emit(OpCode::OpAdd, &[]);
     assert!(compiler
@@ -533,6 +533,7 @@ fn test_functions() {
                         (OpCode::OpReturnValue, vec![]),
                     ])),
                     num_locals: 0,
+                    num_parameters: 0,
                 },
             ],
             &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
@@ -550,6 +551,7 @@ fn test_functions() {
                         (OpCode::OpReturnValue, vec![]),
                     ])),
                     num_locals: 0,
+                    num_parameters: 0,
                 },
             ],
             &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
@@ -567,6 +569,7 @@ fn test_functions() {
                         (OpCode::OpReturnValue, vec![]),
                     ])),
                     num_locals: 0,
+                    num_parameters: 0,
                 },
             ],
             &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
@@ -583,6 +586,7 @@ fn test_functions_without_return_value() {
         &[Value::CompiledFunction {
             instructions: Instructions::from(Vec::from([(OpCode::OpReturn, vec![])])),
             num_locals: 0,
+            num_parameters: 0,
         }],
         &[(OpCode::OpConstant, &[0]), (OpCode::OpPop, &[])],
     )];
@@ -603,11 +607,12 @@ fn test_functions_calls() {
                         (OpCode::OpReturnValue, vec![]),
                     ])),
                     num_locals: 0,
+                    num_parameters: 0,
                 },
             ],
             &[
                 (OpCode::OpConstant, &[1]),
-                (OpCode::OpCall, &[]),
+                (OpCode::OpCall, &[0]),
                 (OpCode::OpPop, &[]),
             ],
         ),
@@ -622,13 +627,70 @@ noArg();"#,
                         (OpCode::OpReturnValue, vec![]),
                     ])),
                     num_locals: 0,
+                    num_parameters: 0,
                 },
             ],
             &[
                 (OpCode::OpConstant, &[1]),
                 (OpCode::OpSetGlobal, &[0]),
                 (OpCode::OpGetGlobal, &[0]),
-                (OpCode::OpCall, &[]),
+                (OpCode::OpCall, &[0]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            r#"let oneArg = fn(a) { a };
+oneArg(24);
+            "#,
+            &[
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                    num_parameters: 1,
+                },
+                Value::Int(24),
+            ],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpGetGlobal, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpCall, &[1]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            r#"let manyArg = fn(a, b, c) { a; b; c;};
+manyArg(24, 25, 26);
+"#,
+            &[
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpPop, vec![]),
+                        (OpCode::OpGetLocal, vec![1]),
+                        (OpCode::OpPop, vec![]),
+                        (OpCode::OpGetLocal, vec![2]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 3,
+                    num_parameters: 3,
+                },
+                Value::Int(24),
+                Value::Int(25),
+                Value::Int(26),
+            ],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpGetGlobal, &[0]),
+                (OpCode::OpConstant, &[1]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpConstant, &[3]),
+                (OpCode::OpCall, &[3]),
                 (OpCode::OpPop, &[]),
             ],
         ),
@@ -651,6 +713,7 @@ fn() { num }
                         (OpCode::OpReturnValue, vec![]),
                     ]),
                     num_locals: 0,
+                    num_parameters: 0,
                 },
             ],
             &[
@@ -675,6 +738,7 @@ num
                         (OpCode::OpReturnValue, vec![]),
                     ]),
                     num_locals: 1,
+                    num_parameters: 0,
                 },
             ],
             &[(OpCode::OpConstant, &[1]), (OpCode::OpPop, &[])],
@@ -700,6 +764,7 @@ a + b
                         (OpCode::OpReturnValue, vec![]),
                     ]),
                     num_locals: 2,
+                    num_parameters: 0,
                 },
             ],
             &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],

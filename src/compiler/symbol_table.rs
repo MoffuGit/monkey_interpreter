@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
-use std::usize;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum SymbolScope {
@@ -53,10 +52,10 @@ impl SymbolTable {
         }
     }
 
-    pub fn new_with_enclosed(outer: SymbolTable) -> Self {
+    pub fn new_with_enclosed(outer: Rc<RefCell<SymbolTable>>) -> Self {
         let store = HashMap::new();
         SymbolTable {
-            outer: Some(Rc::new(RefCell::new(outer))),
+            outer: Some(outer),
             store,
             num_definitions: 0,
         }

@@ -13,7 +13,7 @@ mod frame;
 mod tests;
 
 pub struct VmError {
-    msg: String,
+    pub msg: String,
 }
 
 impl VmError {
@@ -83,7 +83,6 @@ impl Vm {
                 Ok(op) => op,
                 Err(_) => return Err(VmError::new("the u8 isnt a valid OpCode")),
             };
-            println!("{op:?}");
 
             match op {
                 OpCode::OpConstant => {
@@ -178,29 +177,14 @@ impl Vm {
                     self.push(value)?;
                 }
                 OpCode::OpCall => {
-                    if let Value::CompiledFunction {
-                        instructions: function,
-                        num_locals,
-                    } = &self.stack[self.sp - 1].clone()
-                    {
-                        let frame = Frame::new(function.clone(), self.sp);
-                        self.push_frame(frame);
-                        for _ in 0..*num_locals {
-                            self.stack.push(Value::Null);
-                        }
-                        self.sp += num_locals;
-                        continue;
-                    } else {
-                        return Err(VmError::new(format!(
-                            "Calling non-function: {:?}",
-                            &self.stack[self.sp - 1].clone(),
-                        )));
-                    }
+                    let num_args =
+                        u8::from_be_bytes(instructions[ip + 1..ip + 2].try_into().unwrap());
+                    self.current_frame()?.ip += 1;
+                    self.call_funtion(num_args as usize)?;
+                    continue;
                 }
                 OpCode::OpReturn => {
                     if let Some(frame) = self.pop_frame() {
-                        println!("self.sp: {}", self.sp);
-                        println!("frame.base_pointer: {}", frame.base_pointer);
                         for _ in 0..self.sp - frame.base_pointer {
                             self.pop()?;
                         }
@@ -208,18 +192,14 @@ impl Vm {
                     self.push(Value::Null)?;
                 }
                 OpCode::OpReturnValue => {
-                    // println!("stack from the start: {:?}", self.stack);
                     let return_value = self.pop()?;
                     if let Some(frame) = self.pop_frame() {
-                        println!("base_pointer: {}", frame.base_pointer);
-                        println!("sp: {}", self.sp);
                         for _ in 0..self.sp - frame.base_pointer {
                             self.pop()?;
                         }
                     }
                     self.pop()?;
                     self.push(return_value)?;
-                    // println!("stack from the end: {:?}", self.stack);
                 }
                 OpCode::OpSetLocal => {
                     let local_idx =
@@ -244,6 +224,34 @@ impl Vm {
         }
 
         Ok(())
+    }
+
+    fn call_funtion(&mut self, num_args: usize) -> Result<(), VmError> {
+        if let Value::CompiledFunction {
+            instructions: function,
+            num_locals,
+            num_parameters,
+        } = &self.stack[self.sp - 1 - num_args].clone()
+        {
+            if num_parameters != &num_args {
+                return Err(VmError::new(format!(
+                    "wrong number of arguments: want={}, got={}",
+                    num_parameters, num_args
+                )));
+            }
+            let frame = Frame::new(function.clone(), self.sp - num_args);
+            self.push_frame(frame);
+            for _ in 0..*num_locals {
+                self.stack.push(Value::Null);
+            }
+            self.sp += num_locals;
+            Ok(())
+        } else {
+            Err(VmError::new(format!(
+                "Calling non-function: {:?}",
+                &self.stack[self.sp - 1].clone(),
+            )))
+        }
     }
 
     fn execute_index_expression(&mut self, idx: Value, lhs: Value) -> Value {

@@ -78,10 +78,8 @@ impl Compiler {
     }
     pub fn enter_scope(&mut self) {
         let scope = CompilationScope::default();
-        let enclosed_symbol_table = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(
-            self.symbol_table.borrow().clone(),
-        )));
-        self.symbol_table = enclosed_symbol_table;
+        let enclosed_symbol_table = SymbolTable::new_with_enclosed(self.symbol_table.clone());
+        self.symbol_table = Rc::new(RefCell::new(enclosed_symbol_table));
         self.scopes.push(scope);
         self.scope_idx += 1;
     }
@@ -242,6 +240,12 @@ impl Compiler {
             }
             Expression::Fn { parameters, body } => {
                 self.enter_scope();
+                let num_parameters = parameters.len();
+
+                for parameter in parameters {
+                    self.symbol_table.borrow_mut().define(parameter);
+                }
+
                 self.compile_statement(Statement::Block(body))?;
                 if self.last_instruction_is(OpCode::OpPop) {
                     self.replace_last_pop_with_return();
@@ -254,6 +258,7 @@ impl Compiler {
                 let compiled_fn = Value::CompiledFunction {
                     instructions,
                     num_locals,
+                    num_parameters,
                 };
                 let operands = self.add_constant(compiled_fn);
                 self.emit(OpCode::OpConstant, &[operands]);
@@ -263,7 +268,12 @@ impl Compiler {
                 arguments,
             } => {
                 self.compile_expression(*function)?;
-                self.emit(OpCode::OpCall, &[]);
+
+                let arguments_len = arguments.len();
+                for argument in arguments {
+                    self.compile_expression(argument)?;
+                }
+                self.emit(OpCode::OpCall, &[arguments_len as i64]);
             }
             Expression::Array(values) => {
                 let len = values.len();
@@ -342,7 +352,7 @@ impl Compiler {
 
     fn add_constant(&mut self, value: Value) -> i64 {
         self.constants.borrow_mut().push(value);
-        self.constants.borrow_mut().len() as i64 - 1
+        self.constants.borrow().len() as i64 - 1
     }
 
     fn emit(&mut self, op: OpCode, operands: &[i64]) -> usize {
@@ -362,7 +372,7 @@ impl Compiler {
     pub fn bytecode(&mut self) -> ByteCode {
         ByteCode {
             instructions: self.current_scope().instructions.clone(),
-            constants: self.constants.borrow_mut().clone(),
+            constants: self.constants.borrow().clone(),
         }
     }
 }

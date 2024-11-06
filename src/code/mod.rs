@@ -174,7 +174,7 @@ impl From<OpCode> for Definition {
             OpCode::OpArray => Definition::new("OpArray").width(vec![2]),
             OpCode::OpHash => Definition::new("OpHash").width(vec![2]),
             OpCode::OpIndex => Definition::new("OpIndex"),
-            OpCode::OpCall => Definition::new("OpCall"),
+            OpCode::OpCall => Definition::new("OpCall").width(vec![1]),
             OpCode::OpReturnValue => Definition::new("OpReturnValue"),
             OpCode::OpReturn => Definition::new("OpReturn"),
             OpCode::OpGetLocal => Definition::new("OpGetLocal").width(vec![1]),

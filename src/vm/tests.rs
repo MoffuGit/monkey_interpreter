@@ -4,6 +4,7 @@ use crate::eval::value::Value;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::vm::Vm;
+use core::panic;
 use std::collections::HashMap;
 
 fn parse(input: String) -> Program {
@@ -295,4 +296,81 @@ fn test_calling_functions_with_bindings() {
         ),
     ];
     run_vm_test(tests);
+}
+
+#[test]
+fn test_calling_functions_with_arguments_and_bindings() {
+    let tests = vec![
+        VmTestCase::new(
+            r#"let identity = fn(a) { a };
+identity(4)
+"#,
+            4,
+        ),
+        VmTestCase::new(
+            r#"let sum = fn(a, b) { a + b; };
+sum(1, 2);
+"#,
+            3,
+        ),
+        VmTestCase::new(
+            r#"let sum = fn(a, b) { let c = a + b; c; }; 
+sum(1, 2);
+            "#,
+            3,
+        ),
+        VmTestCase::new(
+            r#"let sum = fn(a, b) { let c = a + b; c; };
+sum(1, 2) + sum(3, 4);
+            "#,
+            10,
+        ),
+        VmTestCase::new(
+            r#"let sum = fn(a, b) { let c = a + b; c; }; 
+            let outer = fn() { sum(1, 2) + sum(3, 4); }; 
+            outer();
+            "#,
+            10,
+        ),
+        VmTestCase::new(
+            r#"
+            let globalNum = 10;
+            let sum = fn(a, b) { let c = a + b; c + globalNum; };
+            let outer = fn() { sum(1, 2) + sum(3, 4) + globalNum; };
+            outer() + globalNum;
+            "#,
+            50,
+        ),
+    ];
+
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_calling_functions_with_wrong_arguments() {
+    let tests = vec![
+        ("fn() { 1; }(1)", "wrong number of arguments: want=0, got=1"),
+        ("fn(a) { a; }()", "wrong number of arguments: want=1, got=0"),
+        (
+            "fn(a,b) { a + b; }(1)",
+            "wrong number of arguments: want=2, got=1",
+        ),
+    ];
+
+    for (input, expected) in tests {
+        let program = parse(input.to_string());
+        let mut compiler = Compiler::new();
+
+        if let Err(err) = compiler.compile_program(program) {
+            panic!("compiler error: {err}");
+        }
+
+        let mut vm = Vm::new(compiler.bytecode());
+
+        if let Err(err) = vm.run() {
+            assert_eq!(err.msg, expected);
+        } else {
+            panic!("expected a Vm error")
+        };
+    }
 }
