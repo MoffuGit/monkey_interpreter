@@ -374,3 +374,57 @@ fn test_calling_functions_with_wrong_arguments() {
         };
     }
 }
+
+#[test]
+fn test_builtin_functions() {
+    let tests = vec![
+        VmTestCase::new(r#"len("")"#, 0),
+        VmTestCase::new(r#"len("four")"#, 4),
+        VmTestCase::new(r#"len("hello world")"#, 11),
+        VmTestCase::new("len([1, 2, 3])", 3),
+        VmTestCase::new("len([])", 0),
+        VmTestCase::new(r#"puts("hello", "world!")"#, Value::Null),
+        VmTestCase::new("first([1, 2, 3])", 1),
+        VmTestCase::new("first([])", Value::Null),
+        VmTestCase::new("last([1, 2, 3])", 3),
+        VmTestCase::new("last([])", Value::Null),
+        VmTestCase::new("rest([1, 2, 3])", vec![2, 3]),
+        VmTestCase::new("rest([])", Value::Null),
+        VmTestCase::new("push([], 1)", vec![1]),
+        VmTestCase::new(r#"first(rest(push([1,2,3], 4)))"#, 2),
+    ];
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_builtin_functions_with_wrong_arguments() {
+    let tests = vec![
+        ("len(1)", "argument to \"len\" not supported: got INTEGER"),
+        (
+            r#"len("one", "two")"#,
+            "wrong number of arguments, got=2, want=1",
+        ),
+        ("first(1)", "argument to 'first' must be ARRAY, got INTEGER"),
+        (
+            "push(1, 1)",
+            "argument to 'push' must be ARRAY, got: INTEGER",
+        ),
+        ("last(1)", "argument to 'last' must be ARRAY, got INTEGER"),
+    ];
+    for (input, expected) in tests {
+        let program = parse(input.to_string());
+        let mut compiler = Compiler::new();
+
+        if let Err(err) = compiler.compile_program(program) {
+            panic!("compiler error: {err}");
+        }
+
+        let mut vm = Vm::new(compiler.bytecode());
+
+        if let Err(err) = vm.run() {
+            assert_eq!(err.msg, expected);
+        } else {
+            panic!("expected a Vm error")
+        };
+    }
+}

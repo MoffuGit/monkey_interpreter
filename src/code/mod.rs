@@ -126,6 +126,7 @@ pub enum OpCode {
     OpReturn,
     OpGetLocal,
     OpSetLocal,
+    OpGetBuiltin,
 }
 
 #[derive(Debug)]
@@ -179,6 +180,7 @@ impl From<OpCode> for Definition {
             OpCode::OpReturn => Definition::new("OpReturn"),
             OpCode::OpGetLocal => Definition::new("OpGetLocal").width(vec![1]),
             OpCode::OpSetLocal => Definition::new("OpSetLocal").width(vec![1]),
+            OpCode::OpGetBuiltin => Definition::new("OpGetBuiltin").width(vec![1]),
         }
     }
 }
@@ -214,6 +216,7 @@ impl TryFrom<u8> for OpCode {
             23 => OpCode::OpReturn,
             24 => OpCode::OpGetLocal,
             25 => OpCode::OpSetLocal,
+            26 => OpCode::OpGetBuiltin,
             _ => return Err(()),
         })
     }

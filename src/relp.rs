@@ -40,6 +40,15 @@ pub fn start_compiler() -> io::Result<()> {
     let constans = Rc::new(RefCell::new(vec![]));
     let globals = Rc::new(RefCell::new(vec![]));
     let symbol_table = Rc::new(RefCell::new(SymbolTable::new()));
+    for (idx, builtin) in ["len", "first", "last", "rest", "push", "puts"]
+        .iter()
+        .enumerate()
+    {
+        symbol_table
+            .borrow_mut()
+            .define_builtin(idx, builtin.to_string());
+    }
+
     loop {
         let mut buffer = String::new();
         print!("{PROMPT} ");

@@ -7,6 +7,7 @@ use std::rc::Rc;
 pub enum SymbolScope {
     GlobalScope,
     LocalScope,
+    BuiltinScope,
 }
 
 impl Display for SymbolScope {
@@ -14,6 +15,7 @@ impl Display for SymbolScope {
         match self {
             SymbolScope::GlobalScope => write!(f, "GLOBAL"),
             SymbolScope::LocalScope => write!(f, "LOCAL"),
+            SymbolScope::BuiltinScope => write!(f, "BUILTIN"),
         }
     }
 }
@@ -70,6 +72,16 @@ impl SymbolTable {
         let symbol = Symbol::new(name, scope, self.num_definitions);
         self.store.insert(symbol.name.clone(), symbol.clone());
         self.num_definitions += 1;
+        symbol
+    }
+
+    pub fn define_builtin(&mut self, index: usize, name: String) -> Symbol {
+        let symbol = Symbol {
+            name,
+            index,
+            scope: SymbolScope::BuiltinScope,
+        };
+        self.store.insert(symbol.name.clone(), symbol.clone());
         symbol
     }
 

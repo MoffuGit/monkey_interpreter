@@ -84,9 +84,16 @@ impl Compiler {
         self.scope_idx += 1;
     }
     pub fn new() -> Self {
+        let mut symbol_table = SymbolTable::new();
+        for (idx, builtin) in ["len", "first", "last", "rest", "push", "puts"]
+            .iter()
+            .enumerate()
+        {
+            symbol_table.define_builtin(idx, builtin.to_string());
+        }
         Compiler {
             constants: Rc::new(RefCell::new(vec![])),
-            symbol_table: Rc::new(RefCell::new(SymbolTable::new())),
+            symbol_table: Rc::new(RefCell::new(symbol_table)),
             scope_idx: 0,
             scopes: vec![CompilationScope::default()],
         }
@@ -116,7 +123,8 @@ impl Compiler {
 
     pub fn compile_program(&mut self, program: Program) -> Result<(), CompilerError> {
         for statement in program.statements {
-            self.compile_statement(statement)?;
+            let some = self.compile_statement(statement);
+            some?;
         }
         Ok(())
     }
@@ -134,6 +142,7 @@ impl Compiler {
                 let scope = match symbol.scope {
                     symbol_table::SymbolScope::GlobalScope => OpCode::OpSetGlobal,
                     symbol_table::SymbolScope::LocalScope => OpCode::OpSetLocal,
+                    _ => panic!("you should't be capable of accesing to the Builtin Scope"),
                 };
                 self.emit(scope, &[symbol.index as i64]);
             }
@@ -163,6 +172,7 @@ impl Compiler {
                     let scope = match symbol.scope {
                         symbol_table::SymbolScope::GlobalScope => OpCode::OpGetGlobal,
                         symbol_table::SymbolScope::LocalScope => OpCode::OpGetLocal,
+                        symbol_table::SymbolScope::BuiltinScope => OpCode::OpGetBuiltin,
                     };
                     self.emit(scope, &[symbol.index as i64]);
                 } else {

@@ -142,3 +142,32 @@ fn test_resolve_nested_local() {
         }
     }
 }
+
+#[test]
+fn test_define_resolve_builtins() {
+    let global = Rc::new(RefCell::new(SymbolTable::new()));
+    let first_local = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(global.clone())));
+    let second_local = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(
+        first_local.clone(),
+    )));
+
+    let expected = [
+        Symbol::new("a", SymbolScope::BuiltinScope, 0),
+        Symbol::new("b", SymbolScope::BuiltinScope, 1),
+        Symbol::new("e", SymbolScope::BuiltinScope, 2),
+        Symbol::new("f", SymbolScope::BuiltinScope, 3),
+    ];
+
+    for (idx, expect) in expected.iter().enumerate() {
+        global.borrow_mut().define_builtin(idx, expect.name.clone());
+    }
+
+    for table in [global, first_local, second_local] {
+        for symbol in expected.iter() {
+            assert_eq!(
+                table.borrow_mut().resolve(&symbol.name),
+                Some(symbol.clone())
+            );
+        }
+    }
+}

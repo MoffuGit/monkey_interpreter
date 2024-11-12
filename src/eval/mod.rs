@@ -138,7 +138,9 @@ impl Eval {
                         body,
                         env,
                     } => (parameters, body, env),
-                    Value::Builtin(f) => return f(args),
+                    Value::Builtin(f) => {
+                        return f(args).map_err(EvalError::new);
+                    }
                     evaluated => {
                         return Err(EvalError::new(format!(
                             "not a function: {}",

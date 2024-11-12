@@ -8,9 +8,180 @@ use crate::ast::statement::Statement;
 use crate::code::Instructions;
 
 use super::environment::Environment;
-use super::EvalError;
 
-type BuiltinFuncion = fn(Vec<Value>) -> Result<Value, EvalError>;
+pub type BuiltinFuncion = fn(Vec<Value>) -> Result<Value, String>;
+
+pub enum Builtin {
+    Len,
+    First,
+    Last,
+    Rest,
+    Push,
+    Puts,
+}
+
+impl TryFrom<u8> for Builtin {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Builtin::Len),
+            1 => Ok(Builtin::First),
+            2 => Ok(Builtin::Last),
+            3 => Ok(Builtin::Rest),
+            4 => Ok(Builtin::Push),
+            5 => Ok(Builtin::Puts),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<String> for Builtin {
+    type Error = ();
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "len" => Ok(Builtin::Len),
+            "first" => Ok(Builtin::First),
+            "last" => Ok(Builtin::Last),
+            "rest" => Ok(Builtin::Rest),
+            "push" => Ok(Builtin::Push),
+            "puts" => Ok(Builtin::Puts),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Builtin {
+    pub fn get_builtin_fn(builtin: Builtin) -> BuiltinFuncion {
+        match builtin {
+            Builtin::Len => builtin_len,
+            Builtin::First => builtin_first,
+            Builtin::Last => builtin_last,
+            Builtin::Rest => builtin_rest,
+            Builtin::Push => builtin_push,
+            Builtin::Puts => builtin_puts,
+        }
+    }
+}
+
+pub fn get_builtin_by_name(name: String) -> Result<Value, String> {
+    Ok(Value::Builtin(match name.as_str() {
+        "len" => builtin_len,
+        "first" => builtin_first,
+        "last" => builtin_last,
+        "rest" => builtin_rest,
+        "push" => builtin_push,
+        "puts" => builtin_puts,
+        _ => return Err("Invalid builtin name".into()),
+    }))
+}
+
+fn builtin_len(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments, got={}, want=1",
+            args.len()
+        ));
+    }
+
+    match &args[0] {
+        Value::String(arg) => Ok(Value::Int(arg.len() as i64)),
+        Value::Array(array) => Ok(Value::Int(array.len() as i64)),
+        arg => Err(format!(
+            r#"argument to "len" not supported: got {}"#,
+            arg.as_type()
+        )),
+    }
+}
+
+fn builtin_first(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments, got={}, want=1",
+            args.len()
+        ));
+    }
+
+    match &args[0] {
+        Value::Array(array) => match array.first() {
+            Some(value) => Ok(value.clone()),
+            None => Ok(Value::Null),
+        },
+        arg => Err(format!(
+            "argument to 'first' must be ARRAY, got {}",
+            arg.as_type()
+        )),
+    }
+}
+
+fn builtin_last(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments, got={}, want=1",
+            args.len()
+        ));
+    }
+
+    match &args[0] {
+        Value::Array(array) => match array.last() {
+            Some(value) => Ok(value.clone()),
+            None => Ok(Value::Null),
+        },
+        arg => Err(format!(
+            "argument to 'last' must be ARRAY, got {}",
+            arg.as_type()
+        )),
+    }
+}
+
+fn builtin_rest(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments, got={}, want=1",
+            args.len()
+        ));
+    }
+
+    match &args[0] {
+        Value::Array(array) => {
+            if array.is_empty() {
+                return Ok(Value::Null);
+            }
+            Ok(Value::Array(array[1..].to_vec()))
+        }
+        arg => Err(format!(
+            "argument to 'rest' must be ARRAY, got {}",
+            arg.as_type()
+        )),
+    }
+}
+
+fn builtin_push(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(format!(
+            "wrong number of arguments, got={}, want=2",
+            args.len()
+        ));
+    }
+
+    match &args[0] {
+        Value::Array(array) => {
+            let mut new_array = array.clone();
+            new_array.push(args[1].clone());
+            Ok(Value::Array(new_array))
+        }
+        arg => Err(format!(
+            "argument to 'push' must be ARRAY, got: {}",
+            arg.as_type(),
+        )),
+    }
+}
+
+fn builtin_puts(args: Vec<Value>) -> Result<Value, String> {
+    args.iter().for_each(|arg| println!("{arg}"));
+    Ok(Value::Null)
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {

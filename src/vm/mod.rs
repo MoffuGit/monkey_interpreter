@@ -1,6 +1,6 @@
-use crate::code::OpCode;
+use crate::code::{Instructions, OpCode};
 use crate::compiler::ByteCode;
-use crate::eval::value::Value;
+use crate::eval::value::{Builtin, BuiltinFuncion, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -178,10 +178,28 @@ impl Vm {
                 }
                 OpCode::OpCall => {
                     let num_args =
-                        u8::from_be_bytes(instructions[ip + 1..ip + 2].try_into().unwrap());
+                        u8::from_be_bytes(instructions[ip + 1..ip + 2].try_into().unwrap())
+                            as usize;
                     self.current_frame()?.ip += 1;
-                    self.call_funtion(num_args as usize)?;
-                    continue;
+                    let call = &self.stack[self.sp - 1 - num_args];
+
+                    match call {
+                        Value::CompiledFunction {
+                            instructions,
+                            num_locals,
+                            num_parameters,
+                        } => {
+                            self.call_funtion(
+                                num_args,
+                                instructions.clone(),
+                                *num_locals,
+                                *num_parameters,
+                            )?;
+                            continue;
+                        }
+                        Value::Builtin(builtin_fn) => self.call_builtin(num_args, *builtin_fn),
+                        _ => Err(VmError::new("calling non-function and non-built-in")),
+                    }?
                 }
                 OpCode::OpReturn => {
                     if let Some(frame) = self.pop_frame() {
@@ -219,6 +237,15 @@ impl Vm {
                         self.push(value)?;
                     }
                 }
+                OpCode::OpGetBuiltin => {
+                    let builtin_idx =
+                        u8::from_be_bytes(instructions[ip + 1..ip + 2].try_into().unwrap());
+                    self.current_frame()?.ip += 1;
+                    let builtin =
+                        Builtin::try_from(builtin_idx).expect("should get the builtin fn");
+                    let builtin_fn = Builtin::get_builtin_fn(builtin);
+                    self.push(Value::Builtin(builtin_fn))?;
+                }
             };
             self.current_frame()?.ip += 1;
         }
@@ -226,32 +253,37 @@ impl Vm {
         Ok(())
     }
 
-    fn call_funtion(&mut self, num_args: usize) -> Result<(), VmError> {
-        if let Value::CompiledFunction {
-            instructions: function,
-            num_locals,
-            num_parameters,
-        } = &self.stack[self.sp - 1 - num_args].clone()
-        {
-            if num_parameters != &num_args {
-                return Err(VmError::new(format!(
-                    "wrong number of arguments: want={}, got={}",
-                    num_parameters, num_args
-                )));
-            }
-            let frame = Frame::new(function.clone(), self.sp - num_args);
-            self.push_frame(frame);
-            for _ in 0..*num_locals {
-                self.stack.push(Value::Null);
-            }
-            self.sp += num_locals;
-            Ok(())
-        } else {
-            Err(VmError::new(format!(
-                "Calling non-function: {:?}",
-                &self.stack[self.sp - 1].clone(),
-            )))
+    fn call_builtin(&mut self, num_args: usize, builtin_fn: BuiltinFuncion) -> Result<(), VmError> {
+        let args = &self.stack[self.sp - num_args..self.sp];
+
+        let result = builtin_fn(args.to_vec()).map_err(VmError::new)?;
+        for _ in 0..num_args + 1 {
+            self.pop()?;
         }
+        self.push(result)?;
+        Ok(())
+    }
+
+    fn call_funtion(
+        &mut self,
+        num_args: usize,
+        function: Instructions,
+        num_locals: usize,
+        num_parameters: usize,
+    ) -> Result<(), VmError> {
+        if num_parameters != num_args {
+            return Err(VmError::new(format!(
+                "wrong number of arguments: want={}, got={}",
+                num_parameters, num_args
+            )));
+        }
+        let frame = Frame::new(function.clone(), self.sp - num_args);
+        self.push_frame(frame);
+        for _ in 0..num_locals {
+            self.stack.push(Value::Null);
+        }
+        self.sp += num_locals;
+        Ok(())
     }
 
     fn execute_index_expression(&mut self, idx: Value, lhs: Value) -> Value {

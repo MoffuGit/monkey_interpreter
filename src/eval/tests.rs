@@ -194,30 +194,30 @@ fn test_eval_return_statement() {
 #[test]
 fn test_eval_error_handling() {
     let tests_cases = [
-        // (
-        //     r#"len(1)"#,
-        //     r#"argument to "len" not supported: got INTEGER"#,
-        // ),
-        // (
-        //     r#"len("one", "two")"#,
-        //     "wrong number of arguments, got=2, want=1",
-        // ),
-        // ("5 + true;", "type mismatch: INTEGER + BOOLEAN"),
-        // ("5 + true; 5;", "type mismatch: INTEGER + BOOLEAN"),
-        // ("-true", "unknown operator: -BOOLEAN"),
-        // ("true + false;", "unknown operator: BOOLEAN + BOOLEAN"),
-        // ("5; true + false; 5", "unknown operator: BOOLEAN + BOOLEAN"),
-        // (
-        //     "if (10 > 1) { true + false; }",
-        //     "unknown operator: BOOLEAN + BOOLEAN",
-        // ),
-        // (
-        //     "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }",
-        //     "unknown operator: BOOLEAN + BOOLEAN",
-        // ),
-        // ("foobar", "identifier not found: foobar"),
-        // (r#""Hello" - "World""#, "unknown operator: STRING - STRING"),
-        // ("[1, 2, 3][3]", "index out of bounds"),
+        (
+            r#"len(1)"#,
+            r#"argument to "len" not supported: got INTEGER"#,
+        ),
+        (
+            r#"len("one", "two")"#,
+            "wrong number of arguments, got=2, want=1",
+        ),
+        ("5 + true;", "type mismatch: INTEGER + BOOLEAN"),
+        ("5 + true; 5;", "type mismatch: INTEGER + BOOLEAN"),
+        ("-true", "unknown operator: -BOOLEAN"),
+        ("true + false;", "unknown operator: BOOLEAN + BOOLEAN"),
+        ("5; true + false; 5", "unknown operator: BOOLEAN + BOOLEAN"),
+        (
+            "if (10 > 1) { true + false; }",
+            "unknown operator: BOOLEAN + BOOLEAN",
+        ),
+        (
+            "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }",
+            "unknown operator: BOOLEAN + BOOLEAN",
+        ),
+        ("foobar", "identifier not found: foobar"),
+        (r#""Hello" - "World""#, "unknown operator: STRING - STRING"),
+        ("[1, 2, 3][3]", "index out of bounds"),
         ("[1, 2, 3][-1]", "index out of bounds"),
         (
             r#"{"name": "Monkey"}[fn(x) { x }];"#,

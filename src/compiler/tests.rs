@@ -773,3 +773,43 @@ a + b
 
     run_compiler_test(tests);
 }
+
+#[test]
+fn test_builtin() {
+    let tests = &[
+        CompilerTestCase::new(
+            r#"len([]);
+        push([], 1);
+        "#,
+            &[Value::Int(1)],
+            &[
+                (OpCode::OpGetBuiltin, &[0]),
+                (OpCode::OpArray, &[0]),
+                (OpCode::OpCall, &[1]),
+                (OpCode::OpPop, &[]),
+                (OpCode::OpGetBuiltin, &[4]),
+                (OpCode::OpArray, &[0]),
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpCall, &[2]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new(
+            r#"fn() { len([]) };
+            "#,
+            &[Value::CompiledFunction {
+                instructions: Instructions::from(vec![
+                    (OpCode::OpGetBuiltin, vec![0]),
+                    (OpCode::OpArray, vec![0]),
+                    (OpCode::OpCall, vec![1]),
+                    (OpCode::OpReturnValue, vec![]),
+                ]),
+                num_locals: 0,
+                num_parameters: 0,
+            }],
+            &[(OpCode::OpConstant, &[0]), (OpCode::OpPop, &[])],
+        ),
+    ];
+
+    run_compiler_test(tests);
+}
