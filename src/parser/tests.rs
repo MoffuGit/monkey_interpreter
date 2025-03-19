@@ -273,6 +273,7 @@ fn test_function_literal() {
     assert_eq!(
         program.statements.first(),
         Some(&Statement::Expression(Expression::Fn {
+            name: String::default(),
             parameters: vec!["x".into(), "y".into()],
             body: vec![Statement::Expression(Expression::Infix {
                 lhs: Box::new(Expression::Identifier("x".into())),
@@ -504,5 +505,31 @@ fn test_hash_with_expression() {
             );
         }
         value => panic!("expected Hash got: {:?}", value),
+    }
+}
+
+#[test]
+fn test_function_literal_with_name() {
+    let input = "let myFunction = fn() { };".chars().collect();
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    parser.check_errors();
+
+    if let Some(Statement::Let { value, .. }) = program.statements.first() {
+        assert_eq!(
+            &Expression::Fn {
+                name: "myFunction".into(),
+                parameters: vec![],
+                body: vec![]
+            },
+            value
+        )
+    } else {
+        panic!(
+            "you should got a expression fn, got: {:?}",
+            program.statements.first()
+        )
     }
 }

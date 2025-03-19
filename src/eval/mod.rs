@@ -118,7 +118,9 @@ impl Eval {
                     })
                 }
             }
-            Expression::Fn { parameters, body } => Ok(Value::Function {
+            Expression::Fn {
+                parameters, body, ..
+            } => Ok(Value::Function {
                 parameters,
                 body,
                 env: Rc::clone(&self.env),

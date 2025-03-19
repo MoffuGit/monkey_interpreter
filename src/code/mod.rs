@@ -66,6 +66,7 @@ impl Display for Instructions {
             match operands.len() {
                 0 => definition.name.to_string(),
                 1 => format!("{} {}", definition.name, operands[0]),
+                2 => format!("{} {} {}", definition.name, operands[0], operands[1]),
                 _ => unreachable!(),
             }
         }
@@ -127,6 +128,9 @@ pub enum OpCode {
     OpGetLocal,
     OpSetLocal,
     OpGetBuiltin,
+    OpClosure,
+    OpGetFree,
+    OpCurrentClosure,
 }
 
 #[derive(Debug)]
@@ -181,6 +185,9 @@ impl From<OpCode> for Definition {
             OpCode::OpGetLocal => Definition::new("OpGetLocal").width(vec![1]),
             OpCode::OpSetLocal => Definition::new("OpSetLocal").width(vec![1]),
             OpCode::OpGetBuiltin => Definition::new("OpGetBuiltin").width(vec![1]),
+            OpCode::OpClosure => Definition::new("OpClosure").width(vec![2, 1]),
+            OpCode::OpGetFree => Definition::new("OpGetFree").width(vec![1]),
+            OpCode::OpCurrentClosure => Definition::new("OpCurrentClosure"),
         }
     }
 }
@@ -217,6 +224,9 @@ impl TryFrom<u8> for OpCode {
             24 => OpCode::OpGetLocal,
             25 => OpCode::OpSetLocal,
             26 => OpCode::OpGetBuiltin,
+            27 => OpCode::OpClosure,
+            28 => OpCode::OpGetFree,
+            29 => OpCode::OpCurrentClosure,
             _ => return Err(()),
         })
     }

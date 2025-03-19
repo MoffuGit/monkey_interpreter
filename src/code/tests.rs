@@ -22,6 +22,11 @@ fn test_make() {
             operands: vec![255],
             expected: Instructions(vec![OpCode::OpGetLocal as u8, 255]),
         },
+        Test {
+            op: OpCode::OpClosure,
+            operands: vec![65534, 255],
+            expected: Instructions(vec![OpCode::OpClosure as u8, 255, 254, 255]),
+        },
     ];
 
     for test in tests {
@@ -37,9 +42,10 @@ pub fn test_instruction_string() {
         make(OpCode::OpGetLocal, &[1]),
         make(OpCode::OpConstant, &[2]),
         make(OpCode::OpConstant, &[65535]),
+        make(OpCode::OpClosure, &[65535, 255]),
     ];
 
-    let expected = r#"0000 OpAdd 0001 OpGetLocal 1 0003 OpConstant 2 0006 OpConstant 65535 "#;
+    let expected = r#"0000 OpAdd 0001 OpGetLocal 1 0003 OpConstant 2 0006 OpConstant 65535 0009 OpClosure 65535 255 "#;
 
     assert_eq!(concat_instructions(&instructions).to_string(), expected)
 }
@@ -62,6 +68,11 @@ pub fn test_read_operands() {
             op: OpCode::OpGetLocal,
             operands: vec![255],
             bytes_read: 1,
+        },
+        Test {
+            op: OpCode::OpClosure,
+            operands: vec![65535, 255],
+            bytes_read: 3,
         },
     ];
 

@@ -204,6 +204,10 @@ pub enum Value {
         num_locals: usize,
         num_parameters: usize,
     },
+    Closure {
+        fun: Box<Value>,
+        free: Vec<Value>,
+    },
 }
 
 impl From<i64> for Value {
@@ -305,6 +309,9 @@ impl Display for Value {
             Value::CompiledFunction { instructions, .. } => {
                 write!(f, "CompiledFunction[{}]", instructions)
             }
+            Value::Closure { fun, .. } => {
+                write!(f, "Closure[{fun}]")
+            }
         }
     }
 }
@@ -323,6 +330,7 @@ impl Value {
             Value::Array(_) => "ARRAY".into(),
             Value::Hash(_) => "HASH".into(),
             Value::CompiledFunction { .. } => "COMPILED_FUNCTION_OBJ".into(),
+            Value::Closure { .. } => "CLOSURE".into(),
         }
     }
 }

@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::fmt::Display;
 use std::rc::Rc;
 
-use self::symbol_table::SymbolTable;
+use self::symbol_table::{Symbol, SymbolTable};
 
 #[derive(Debug)]
 pub struct CompilerError {
@@ -137,8 +137,8 @@ impl Compiler {
             }
             Statement::Let { name, value } => {
                 self.compile_expression(value)?;
-
                 let symbol = self.symbol_table.borrow_mut().define(name);
+
                 let scope = match symbol.scope {
                     symbol_table::SymbolScope::GlobalScope => OpCode::OpSetGlobal,
                     symbol_table::SymbolScope::LocalScope => OpCode::OpSetLocal,
@@ -169,12 +169,7 @@ impl Compiler {
             Expression::Identifier(name) => {
                 let symbol = self.symbol_table.borrow_mut().resolve(&name);
                 if let Some(symbol) = symbol {
-                    let scope = match symbol.scope {
-                        symbol_table::SymbolScope::GlobalScope => OpCode::OpGetGlobal,
-                        symbol_table::SymbolScope::LocalScope => OpCode::OpGetLocal,
-                        symbol_table::SymbolScope::BuiltinScope => OpCode::OpGetBuiltin,
-                    };
-                    self.emit(scope, &[symbol.index as i64]);
+                    self.load_symbol(symbol);
                 } else {
                     return Err(CompilerError::new(format!("undefined variable: {}", name)));
                 };
@@ -248,8 +243,15 @@ impl Compiler {
                 let after_aternative_pos = self.current_scope().instructions.len();
                 self.change_operand(jump_pos, &[after_aternative_pos as i64]);
             }
-            Expression::Fn { parameters, body } => {
+            Expression::Fn {
+                name,
+                parameters,
+                body,
+            } => {
                 self.enter_scope();
+                if !name.is_empty() {
+                    self.symbol_table.borrow_mut().define_function(&name);
+                }
                 let num_parameters = parameters.len();
 
                 for parameter in parameters {
@@ -263,15 +265,21 @@ impl Compiler {
                 if !self.last_instruction_is(OpCode::OpReturnValue) {
                     self.emit(OpCode::OpReturn, &[]);
                 }
-                let num_locals = self.symbol_table.borrow().num_definitions;
+                let free_symbols = self.symbol_table.clone().borrow().free_symbols.clone();
+                let num_locals = self.symbol_table.borrow_mut().num_definitions;
                 let instructions = self.leave_scope();
+
+                for symbol in free_symbols.iter() {
+                    self.load_symbol(symbol.clone());
+                }
+
                 let compiled_fn = Value::CompiledFunction {
                     instructions,
                     num_locals,
                     num_parameters,
                 };
                 let operands = self.add_constant(compiled_fn);
-                self.emit(OpCode::OpConstant, &[operands]);
+                self.emit(OpCode::OpClosure, &[operands, free_symbols.len() as i64]);
             }
             Expression::Call {
                 function,
@@ -309,6 +317,24 @@ impl Compiler {
             }
         };
         Ok(())
+    }
+
+    fn load_symbol(&mut self, symbol: Symbol) {
+        match symbol.scope {
+            symbol_table::SymbolScope::GlobalScope => {
+                self.emit(OpCode::OpGetGlobal, &[symbol.index as i64])
+            }
+            symbol_table::SymbolScope::LocalScope => {
+                self.emit(OpCode::OpGetLocal, &[symbol.index as i64])
+            }
+            symbol_table::SymbolScope::BuiltinScope => {
+                self.emit(OpCode::OpGetBuiltin, &[symbol.index as i64])
+            }
+            symbol_table::SymbolScope::FreeScope => {
+                self.emit(OpCode::OpGetFree, &[symbol.index as i64])
+            }
+            symbol_table::SymbolScope::FunctionScope => self.emit(OpCode::OpCurrentClosure, &[]),
+        };
     }
 
     fn replace_last_pop_with_return(&mut self) {

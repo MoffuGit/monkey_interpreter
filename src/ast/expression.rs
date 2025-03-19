@@ -24,6 +24,7 @@ pub enum Expression {
         alternative: Option<Vec<Statement>>,
     },
     Fn {
+        name: String,
         parameters: Vec<String>,
         body: Vec<Statement>,
     },
@@ -85,8 +86,12 @@ impl Display for Expression {
                 }
                 write!(f, "}}")
             }
-            Expression::Fn { parameters, body } => {
-                write!(f, "fn ({}) {{", parameters.join(", "))?;
+            Expression::Fn {
+                name,
+                parameters,
+                body,
+            } => {
+                write!(f, "fn {} ({}) {{", name, parameters.join(", "))?;
 
                 for statement in body {
                     write!(f, "{statement}")?;

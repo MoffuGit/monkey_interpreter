@@ -171,3 +171,114 @@ fn test_define_resolve_builtins() {
         }
     }
 }
+
+#[test]
+fn test_resolve_free() {
+    struct Test {
+        table: Rc<RefCell<SymbolTable>>,
+        expected_symbols: Vec<Symbol>,
+        expected_free: Vec<Symbol>,
+    }
+    let global = Rc::new(RefCell::new(SymbolTable::new()));
+    global.borrow_mut().define("a");
+    global.borrow_mut().define("b");
+
+    let first_local = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(global.clone())));
+    first_local.borrow_mut().define("c");
+    first_local.borrow_mut().define("d");
+
+    let second_local = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(
+        first_local.clone(),
+    )));
+    second_local.borrow_mut().define("e");
+    second_local.borrow_mut().define("f");
+    let tests = vec![
+        Test {
+            table: first_local,
+            expected_symbols: vec![
+                Symbol::new("a", SymbolScope::GlobalScope, 0),
+                Symbol::new("b", SymbolScope::GlobalScope, 1),
+                Symbol::new("c", SymbolScope::LocalScope, 0),
+                Symbol::new("d", SymbolScope::LocalScope, 1),
+            ],
+            expected_free: vec![],
+        },
+        Test {
+            table: second_local,
+            expected_symbols: vec![
+                Symbol::new("a", SymbolScope::GlobalScope, 0),
+                Symbol::new("b", SymbolScope::GlobalScope, 1),
+                Symbol::new("c", SymbolScope::FreeScope, 0),
+                Symbol::new("d", SymbolScope::FreeScope, 1),
+                Symbol::new("e", SymbolScope::LocalScope, 0),
+                Symbol::new("f", SymbolScope::LocalScope, 1),
+            ],
+            expected_free: vec![
+                Symbol::new("c", SymbolScope::LocalScope, 0),
+                Symbol::new("d", SymbolScope::LocalScope, 1),
+            ],
+        },
+    ];
+
+    for test in tests {
+        for expected in test.expected_symbols {
+            assert_eq!(
+                Some(expected.clone()),
+                test.table.borrow_mut().resolve(&expected.name)
+            )
+        }
+
+        assert_eq!(test.expected_free, test.table.borrow_mut().free_symbols);
+    }
+}
+
+#[test]
+fn test_resolve_unresolvable_free() {
+    let global = Rc::new(RefCell::new(SymbolTable::new()));
+    global.borrow_mut().define("a");
+
+    let first_local = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(global.clone())));
+    first_local.borrow_mut().define("c");
+
+    let second_local = Rc::new(RefCell::new(SymbolTable::new_with_enclosed(
+        first_local.clone(),
+    )));
+    second_local.borrow_mut().define("e");
+    second_local.borrow_mut().define("f");
+    let expected = vec![
+        Symbol::new("a", SymbolScope::GlobalScope, 0),
+        Symbol::new("c", SymbolScope::FreeScope, 0),
+        Symbol::new("e", SymbolScope::LocalScope, 0),
+        Symbol::new("f", SymbolScope::LocalScope, 1),
+    ];
+
+    for symbol in expected {
+        assert_eq!(
+            Some(symbol.clone()),
+            second_local.borrow_mut().resolve(&symbol.name)
+        );
+    }
+    let expected_unresolvable = vec!["b", "d"];
+    for name in expected_unresolvable {
+        assert!(second_local.borrow_mut().resolve(name).is_none());
+    }
+}
+
+#[test]
+fn test_define_and_resolve_function_name() {
+    let global = Rc::new(RefCell::new(SymbolTable::new()));
+    global.borrow_mut().define_function("a");
+
+    let expected = Symbol::new("a", SymbolScope::FunctionScope, 0);
+
+    assert_eq!(global.borrow_mut().resolve(&expected.name), Some(expected));
+}
+
+#[test]
+fn test_shadow_function_name() {
+    let global = Rc::new(RefCell::new(SymbolTable::new()));
+    global.borrow_mut().define_function("a");
+    global.borrow_mut().define("a");
+    let expected = Symbol::new("a", SymbolScope::GlobalScope, 0);
+    assert_eq!(global.borrow_mut().resolve(&expected.name), Some(expected));
+}

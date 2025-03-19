@@ -130,8 +130,18 @@ impl Parser {
 
         self.next_token();
 
-        let value = self.parse_expression(Precedence::Lowest)?;
+        let mut value = self.parse_expression(Precedence::Lowest)?;
 
+        if let Expression::Fn {
+            parameters, body, ..
+        } = value
+        {
+            value = Expression::Fn {
+                name: name.clone(),
+                parameters,
+                body,
+            };
+        }
         if self.peek_token == Token::Semicolon {
             self.next_token()
         }
@@ -327,7 +337,11 @@ impl Parser {
         self.assert_peek(Token::Lbrace)?;
         let body = self.parse_block_statement()?;
 
-        Ok(Expression::Fn { parameters, body })
+        Ok(Expression::Fn {
+            name: String::default(),
+            parameters,
+            body,
+        })
     }
 
     fn parse_function_parameters(&mut self) -> Result<Vec<String>, ParserError> {

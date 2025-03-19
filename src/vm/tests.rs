@@ -273,7 +273,7 @@ fn test_calling_functions_with_bindings() {
                     let three = 3;
                     let four = 4;
                     three + four
-                }
+                };
 
                 oneAndTwo() + threeAndFour();
                 "#,
@@ -303,42 +303,42 @@ fn test_calling_functions_with_arguments_and_bindings() {
     let tests = vec![
         VmTestCase::new(
             r#"let identity = fn(a) { a };
-identity(4)
-"#,
+    identity(4)
+    "#,
             4,
         ),
         VmTestCase::new(
             r#"let sum = fn(a, b) { a + b; };
-sum(1, 2);
-"#,
-            3,
-        ),
-        VmTestCase::new(
-            r#"let sum = fn(a, b) { let c = a + b; c; }; 
-sum(1, 2);
+            sum(1, 2);
             "#,
             3,
         ),
         VmTestCase::new(
             r#"let sum = fn(a, b) { let c = a + b; c; };
-sum(1, 2) + sum(3, 4);
-            "#,
+            sum(1, 2);
+                        "#,
+            3,
+        ),
+        VmTestCase::new(
+            r#"let sum = fn(a, b) { let c = a + b; c; };
+            sum(1, 2) + sum(3, 4);
+                        "#,
             10,
         ),
         VmTestCase::new(
-            r#"let sum = fn(a, b) { let c = a + b; c; }; 
-            let outer = fn() { sum(1, 2) + sum(3, 4); }; 
-            outer();
-            "#,
+            r#"let sum = fn(a, b) { let c = a + b; c; };
+                        let outer = fn() { sum(1, 2) + sum(3, 4); };
+                        outer();
+                        "#,
             10,
         ),
         VmTestCase::new(
             r#"
-            let globalNum = 10;
-            let sum = fn(a, b) { let c = a + b; c + globalNum; };
-            let outer = fn() { sum(1, 2) + sum(3, 4) + globalNum; };
-            outer() + globalNum;
-            "#,
+                        let globalNum = 10;
+                        let sum = fn(a, b) { let c = a + b; c + globalNum; };
+                        let outer = fn() { sum(1, 2) + sum(3, 4) + globalNum; };
+                        outer() + globalNum;
+                        "#,
             50,
         ),
     ];
@@ -427,4 +427,30 @@ fn test_builtin_functions_with_wrong_arguments() {
             panic!("expected a Vm error")
         };
     }
+}
+
+#[test]
+fn test_closures() {
+    let tests = vec![VmTestCase::new(
+       "let newClosure = fn(a) { fn() { a; }; }; let closure = newClosure(99); closure();",
+        99,
+    ), VmTestCase::new("let newAdder = fn(a, b) { fn(c) { a + b + c }; }; let adder = newAdder(1, 2); adder(8);", 11),
+    VmTestCase::new("let newAdder = fn(a, b) { let c = a + b; fn(d) { c + d }; }; let adder = newAdder(1, 2); adder(8);", 11),
+    VmTestCase::new("let newAdderOuter = fn(a, b) { let c = a + b; fn(d) { let e = d + c; fn(f) { e + f; }; }; }; let newAdderInner = newAdderOuter(1, 2) let adder = newAdderInner(3); adder(8);", 14),
+        VmTestCase::new("let a = 1; let newAdderOuter = fn(b) { fn(c) { fn(d) { a + b + c + d }; }; }; let newAdderInner = newAdderOuter(2) let adder = newAdderInner(3); adder(8);", 14),
+        VmTestCase::new("let newClosure = fn(a, b) { let one = fn() { a; }; let two = fn() { b; }; fn() { one() + two(); }; }; let closure = newClosure(9, 90); closure();", 99),
+        VmTestCase::new("let countDown = fn(x) { if (x == 0) { return 0; } else { countDown(x - 1); } }; countDown(1);", 0),
+        VmTestCase::new("let countDown = fn(x) { if (x == 0) { return 0; } else { countDown(x - 1); } }; let wrapper = fn() { countDown(1); }; wrapper();", 0),
+        VmTestCase::new("let wrapper = fn() { let countDown = fn(x) { if (x == 0) { return 0; } else { countDown(x - 1); } }; countDown(1); }; wrapper();", 0),
+    ];
+
+    run_vm_test(tests);
+}
+
+#[test]
+fn test_recursive_fibonacci() {
+    let tests = vec![
+        VmTestCase::new("let fibonacci = fn(x) { if (x == 0) { return 0; } else { if (x == 1) { return 1; } else { fibonacci(x - 1) + fibonacci(x - 2); } } }; fibonacci(15);", 610)
+    ];
+    run_vm_test(tests);
 }

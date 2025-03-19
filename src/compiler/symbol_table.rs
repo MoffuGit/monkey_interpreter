@@ -8,6 +8,8 @@ pub enum SymbolScope {
     GlobalScope,
     LocalScope,
     BuiltinScope,
+    FreeScope,
+    FunctionScope,
 }
 
 impl Display for SymbolScope {
@@ -16,6 +18,8 @@ impl Display for SymbolScope {
             SymbolScope::GlobalScope => write!(f, "GLOBAL"),
             SymbolScope::LocalScope => write!(f, "LOCAL"),
             SymbolScope::BuiltinScope => write!(f, "BUILTIN"),
+            SymbolScope::FreeScope => write!(f, "FREE"),
+            SymbolScope::FunctionScope => write!(f, "FUNCTION"),
         }
     }
 }
@@ -42,6 +46,7 @@ pub struct SymbolTable {
     pub outer: Option<Rc<RefCell<SymbolTable>>>,
     pub store: HashMap<String, Symbol>,
     pub num_definitions: usize,
+    pub free_symbols: Vec<Symbol>,
 }
 
 impl SymbolTable {
@@ -51,6 +56,7 @@ impl SymbolTable {
             outer: None,
             store,
             num_definitions: 0,
+            free_symbols: vec![],
         }
     }
 
@@ -60,6 +66,7 @@ impl SymbolTable {
             outer: Some(outer),
             store,
             num_definitions: 0,
+            free_symbols: vec![],
         }
     }
 
@@ -85,11 +92,40 @@ impl SymbolTable {
         symbol
     }
 
+    pub fn define_free(&mut self, original: Symbol) -> Symbol {
+        self.free_symbols.push(original.clone());
+
+        let symbol = Symbol::new(
+            &original.name,
+            SymbolScope::FreeScope,
+            self.free_symbols.len() - 1,
+        );
+        self.store.insert(original.name, symbol.clone());
+        symbol
+    }
+
     pub fn resolve(&mut self, name: &str) -> Option<Symbol> {
-        self.store.get(name).cloned().or(self
-            .outer
-            .clone()
-            .and_then(|store| store.borrow_mut().resolve(name)))
+        self.store
+            .get(name)
+            .cloned()
+            .or(self.outer.clone().and_then(|store| {
+                store.borrow_mut().resolve(name).map(|symbol| {
+                    if symbol.scope == SymbolScope::GlobalScope
+                        || symbol.scope == SymbolScope::BuiltinScope
+                        || symbol.scope == SymbolScope::FunctionScope
+                    {
+                        return symbol;
+                    }
+
+                    self.define_free(symbol)
+                })
+            }))
+    }
+
+    pub fn define_function(&mut self, name: &str) -> Option<Symbol> {
+        let symbol = Symbol::new(name, SymbolScope::FunctionScope, 0);
+        self.store.insert(name.into(), symbol.clone());
+        Some(symbol)
     }
 }
 

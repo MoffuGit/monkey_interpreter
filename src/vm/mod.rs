@@ -1,4 +1,4 @@
-use crate::code::{Instructions, OpCode};
+use crate::code::OpCode;
 use crate::compiler::ByteCode;
 use crate::eval::value::{Builtin, BuiltinFuncion, Value};
 use std::cell::RefCell;
@@ -57,8 +57,17 @@ impl Vm {
     }
 
     pub fn new(byte_code: ByteCode) -> Self {
+        let main_fn = Value::CompiledFunction {
+            instructions: byte_code.instructions,
+            num_locals: 0,
+            num_parameters: 0,
+        };
+        let main_closure = Value::Closure {
+            fun: Box::new(main_fn),
+            free: vec![],
+        };
         let mut frames: Vec<Frame> = Vec::with_capacity(MAX_FRAMES);
-        frames.push(Frame::new(byte_code.instructions.clone(), 0));
+        frames.push(Frame::new(main_closure, 0));
         Vm {
             constans: byte_code.constants.clone(),
             frames,
@@ -76,13 +85,14 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> Result<(), VmError> {
-        while self.current_frame()?.ip < self.current_frame()?.function.len() {
+        while self.current_frame()?.ip < self.current_frame()?.instructions().len() {
             let ip = self.current_frame()?.ip;
-            let instructions = self.current_frame()?.function.clone();
+            let instructions = self.current_frame()?.instructions().clone();
             let op = match OpCode::try_from(instructions[ip]) {
                 Ok(op) => op,
                 Err(_) => return Err(VmError::new("the u8 isnt a valid OpCode")),
             };
+            println!("op: {op:?}");
 
             match op {
                 OpCode::OpConstant => {
@@ -184,21 +194,14 @@ impl Vm {
                     let call = &self.stack[self.sp - 1 - num_args];
 
                     match call {
-                        Value::CompiledFunction {
-                            instructions,
-                            num_locals,
-                            num_parameters,
-                        } => {
-                            self.call_funtion(
-                                num_args,
-                                instructions.clone(),
-                                *num_locals,
-                                *num_parameters,
-                            )?;
+                        Value::Closure { fun, free } => {
+                            self.call_closure(num_args, *fun.clone(), free.to_vec())?;
                             continue;
                         }
                         Value::Builtin(builtin_fn) => self.call_builtin(num_args, *builtin_fn),
-                        _ => Err(VmError::new("calling non-function and non-built-in")),
+                        value => Err(VmError::new(format!(
+                            "calling non-function and non-built-in: {value}"
+                        ))),
                     }?
                 }
                 OpCode::OpReturn => {
@@ -246,11 +249,116 @@ impl Vm {
                     let builtin_fn = Builtin::get_builtin_fn(builtin);
                     self.push(Value::Builtin(builtin_fn))?;
                 }
+                OpCode::OpClosure => {
+                    let const_idx =
+                        u16::from_be_bytes(instructions[ip + 1..ip + 3].try_into().unwrap());
+                    let num_free =
+                        u8::from_be_bytes(instructions[ip + 3..ip + 4].try_into().unwrap());
+                    self.current_frame()?.ip += 3;
+                    self.push_closure(const_idx as usize, num_free as usize)?;
+                }
+                OpCode::OpGetFree => {
+                    let free_idx =
+                        u8::from_be_bytes(instructions[ip + 1..ip + 2].try_into().unwrap());
+                    self.current_frame()?.ip += 1;
+                    let current_closure = self.current_frame()?.cl.clone();
+
+                    if let Value::Closure { free, .. } = current_closure {
+                        self.push(free[free_idx as usize].clone())?;
+                    }
+                }
+                OpCode::OpCurrentClosure => {
+                    let current_closure = self.current_frame()?.cl.clone();
+                    self.push(current_closure)?;
+                }
             };
             self.current_frame()?.ip += 1;
         }
 
         Ok(())
+    }
+
+    fn push_closure(&mut self, const_idx: usize, num_free: usize) -> Result<(), VmError> {
+        let constant = self.constans[const_idx].clone();
+        if let Value::CompiledFunction { .. } = &constant {
+            let free = (self.sp - num_free..self.sp)
+                .map(|idx| self.stack[idx].clone())
+                .collect::<Vec<_>>();
+            for _ in 0..num_free {
+                self.pop()?;
+            }
+            let closure = Value::Closure {
+                fun: Box::new(constant),
+                free: free.clone(),
+            };
+            self.push(closure)
+        } else {
+            Err(VmError::new(
+                "I got a consant thhat isnt a compiled function",
+            ))
+        }
+    }
+
+    // fn call_funtion(
+    //     &mut self,
+    //     num_args: usize,
+    //     function: Instructions,
+    //     num_locals: usize,
+    //     num_parameters: usize,
+    // ) -> Result<(), VmError> {
+    //     if num_parameters != num_args {
+    //         return Err(VmError::new(format!(
+    //             "wrong number of arguments: want={}, got={}",
+    //             num_parameters, num_args
+    //         )));
+    //     }
+    //     let frame = Frame::new(function.clone(), self.sp - num_args);
+    //     self.push_frame(frame);
+    //     for _ in 0..num_locals {
+    //         self.stack.push(Value::Null);
+    //     }
+    //     self.sp += num_locals;
+    //     Ok(())
+    // }
+
+    fn call_closure(
+        &mut self,
+        num_args: usize,
+        fun: Value,
+        free: Vec<Value>,
+    ) -> Result<(), VmError> {
+        if let Value::CompiledFunction {
+            num_locals,
+            num_parameters,
+            ..
+        } = &fun
+        {
+            if num_args != *num_parameters {
+                return Err(VmError::new(format!(
+                    "wrong number of arguments: want={}, got={}",
+                    num_parameters, num_args
+                )));
+            }
+            let frame = Frame::new(
+                Value::Closure {
+                    fun: Box::new(fun.clone()),
+                    free,
+                },
+                self.sp - num_args,
+            );
+
+            self.push_frame(frame);
+            for _ in 0..*num_locals {
+                self.stack.push(Value::Null);
+            }
+            self.sp += num_locals;
+
+            Ok(())
+        } else {
+            Err(VmError::new(
+                "You got a closure without a compiled function",
+            ))
+        }
     }
 
     fn call_builtin(&mut self, num_args: usize, builtin_fn: BuiltinFuncion) -> Result<(), VmError> {
@@ -261,28 +369,6 @@ impl Vm {
             self.pop()?;
         }
         self.push(result)?;
-        Ok(())
-    }
-
-    fn call_funtion(
-        &mut self,
-        num_args: usize,
-        function: Instructions,
-        num_locals: usize,
-        num_parameters: usize,
-    ) -> Result<(), VmError> {
-        if num_parameters != num_args {
-            return Err(VmError::new(format!(
-                "wrong number of arguments: want={}, got={}",
-                num_parameters, num_args
-            )));
-        }
-        let frame = Frame::new(function.clone(), self.sp - num_args);
-        self.push_frame(frame);
-        for _ in 0..num_locals {
-            self.stack.push(Value::Null);
-        }
-        self.sp += num_locals;
         Ok(())
     }
 

@@ -536,7 +536,7 @@ fn test_functions() {
                     num_parameters: 0,
                 },
             ],
-            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
+            &[(OpCode::OpClosure, &[2, 0]), (OpCode::OpPop, &[])],
         ),
         CompilerTestCase::new(
             "fn() { 5 + 10}",
@@ -554,7 +554,7 @@ fn test_functions() {
                     num_parameters: 0,
                 },
             ],
-            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
+            &[(OpCode::OpClosure, &[2, 0]), (OpCode::OpPop, &[])],
         ),
         CompilerTestCase::new(
             "fn() { 1; 2 }",
@@ -572,7 +572,7 @@ fn test_functions() {
                     num_parameters: 0,
                 },
             ],
-            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
+            &[(OpCode::OpClosure, &[2, 0]), (OpCode::OpPop, &[])],
         ),
     ];
 
@@ -588,7 +588,7 @@ fn test_functions_without_return_value() {
             num_locals: 0,
             num_parameters: 0,
         }],
-        &[(OpCode::OpConstant, &[0]), (OpCode::OpPop, &[])],
+        &[(OpCode::OpClosure, &[0, 0]), (OpCode::OpPop, &[])],
     )];
 
     run_compiler_test(tests);
@@ -611,7 +611,7 @@ fn test_functions_calls() {
                 },
             ],
             &[
-                (OpCode::OpConstant, &[1]),
+                (OpCode::OpClosure, &[1, 0]),
                 (OpCode::OpCall, &[0]),
                 (OpCode::OpPop, &[]),
             ],
@@ -631,7 +631,7 @@ noArg();"#,
                 },
             ],
             &[
-                (OpCode::OpConstant, &[1]),
+                (OpCode::OpClosure, &[1, 0]),
                 (OpCode::OpSetGlobal, &[0]),
                 (OpCode::OpGetGlobal, &[0]),
                 (OpCode::OpCall, &[0]),
@@ -654,7 +654,7 @@ oneArg(24);
                 Value::Int(24),
             ],
             &[
-                (OpCode::OpConstant, &[0]),
+                (OpCode::OpClosure, &[0, 0]),
                 (OpCode::OpSetGlobal, &[0]),
                 (OpCode::OpGetGlobal, &[0]),
                 (OpCode::OpConstant, &[1]),
@@ -684,7 +684,7 @@ manyArg(24, 25, 26);
                 Value::Int(26),
             ],
             &[
-                (OpCode::OpConstant, &[0]),
+                (OpCode::OpClosure, &[0, 0]),
                 (OpCode::OpSetGlobal, &[0]),
                 (OpCode::OpGetGlobal, &[0]),
                 (OpCode::OpConstant, &[1]),
@@ -719,7 +719,7 @@ fn() { num }
             &[
                 (OpCode::OpConstant, &[0]),
                 (OpCode::OpSetGlobal, &[0]),
-                (OpCode::OpConstant, &[1]),
+                (OpCode::OpClosure, &[1, 0]),
                 (OpCode::OpPop, &[]),
             ],
         ),
@@ -741,7 +741,7 @@ num
                     num_parameters: 0,
                 },
             ],
-            &[(OpCode::OpConstant, &[1]), (OpCode::OpPop, &[])],
+            &[(OpCode::OpClosure, &[1, 0]), (OpCode::OpPop, &[])],
         ),
         CompilerTestCase::new(
             r#"fn() {
@@ -767,7 +767,7 @@ a + b
                     num_parameters: 0,
                 },
             ],
-            &[(OpCode::OpConstant, &[2]), (OpCode::OpPop, &[])],
+            &[(OpCode::OpClosure, &[2, 0]), (OpCode::OpPop, &[])],
         ),
     ];
 
@@ -807,8 +807,183 @@ fn test_builtin() {
                 num_locals: 0,
                 num_parameters: 0,
             }],
-            &[(OpCode::OpConstant, &[0]), (OpCode::OpPop, &[])],
+            &[(OpCode::OpClosure, &[0, 0]), (OpCode::OpPop, &[])],
         ),
+    ];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_closures() {
+    let tests = &[
+        CompilerTestCase::new(
+            "fn(a) { fn(b) { a + b } }",
+            &[
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetFree, vec![0]),
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpAdd, vec![]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                    num_parameters: 1,
+                },
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpClosure, vec![0, 1]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                    num_parameters: 1,
+                },
+            ],
+            &[(OpCode::OpClosure, &[1, 0]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new(
+            "fn(a) { fn(b) { fn(c) { a + b + c } } };",
+            &[
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetFree, vec![0]),
+                        (OpCode::OpGetFree, vec![1]),
+                        (OpCode::OpAdd, vec![]),
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpAdd, vec![]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                    num_parameters: 1,
+                },
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetFree, vec![0]),
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpClosure, vec![0, 2]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                    num_parameters: 1,
+                },
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpClosure, vec![1, 1]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                    num_parameters: 1,
+                },
+            ],
+            &[(OpCode::OpClosure, &[2, 0]), (OpCode::OpPop, &[])],
+        ),
+        CompilerTestCase::new("let global = 55; fn() { let a = 66; fn() { let b = 77; fn() { let c = 88; global + a + b + c; } } }",
+            &[Value::Int(55), Value::Int(66), Value::Int(77), Value::Int(88),
+                Value::CompiledFunction { instructions: Instructions::from(vec![
+                (OpCode::OpConstant, vec![3]),
+                (OpCode::OpSetLocal, vec![0]),
+                (OpCode::OpGetGlobal, vec![0]),
+                (OpCode::OpGetFree, vec![0]),
+                (OpCode::OpAdd, vec![]),
+                (OpCode::OpGetFree, vec![1]),
+                (OpCode::OpAdd, vec![]),
+                (OpCode::OpGetLocal, vec![0]),
+                (OpCode::OpAdd, vec![]),
+                (OpCode::OpReturnValue, vec![]),
+                ]), num_locals: 1, num_parameters: 0 },
+                Value::CompiledFunction { instructions: Instructions::from(vec![
+                (OpCode::OpConstant, vec![2]),
+                (OpCode::OpSetLocal, vec![0]),
+                (OpCode::OpGetFree, vec![0]),
+                (OpCode::OpGetLocal, vec![0]),
+                (OpCode::OpClosure, vec![4,2]),
+                (OpCode::OpReturnValue, vec![]),
+                ]), num_locals: 1, num_parameters: 0 },
+                Value::CompiledFunction { instructions: Instructions::from(vec![
+                (OpCode::OpConstant, vec![1]),
+                (OpCode::OpSetLocal, vec![0]),
+                (OpCode::OpGetLocal, vec![0]),
+                (OpCode::OpClosure, vec![5,1]),
+                (OpCode::OpReturnValue, vec![]),
+                ]), num_locals: 1, num_parameters: 0 }
+            ],
+            &[
+                (OpCode::OpConstant, &[0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpClosure, &[6,0]),
+                (OpCode::OpPop, &[]),
+            ]
+        )
+    ];
+
+    run_compiler_test(tests);
+}
+
+#[test]
+fn test_recursive_functions() {
+    let tests = &[
+        CompilerTestCase::new(
+            "let countDown = fn(x) { countDown(x - 1); }; countDown(1);",
+            &[
+                Value::Int(1),
+                Value::CompiledFunction {
+                    instructions: Instructions::from(vec![
+                        (OpCode::OpCurrentClosure, vec![]),
+                        (OpCode::OpGetLocal, vec![0]),
+                        (OpCode::OpConstant, vec![0]),
+                        (OpCode::OpSub, vec![]),
+                        (OpCode::OpCall, vec![1]),
+                        (OpCode::OpReturnValue, vec![]),
+                    ]),
+                    num_locals: 1,
+                    num_parameters: 1,
+                },
+                Value::Int(1),
+            ],
+            &[
+                (OpCode::OpClosure, &[1, 0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpGetGlobal, &[0]),
+                (OpCode::OpConstant, &[2]),
+                (OpCode::OpCall, &[1]),
+                (OpCode::OpPop, &[]),
+            ],
+        ),
+        CompilerTestCase::new("let wrapper = fn() { let countDown = fn(x) { countDown(x - 1); }; countDown(1); }; wrapper();", &[
+            Value::Int(1),
+            Value::CompiledFunction {
+                instructions: Instructions::from(vec![
+                    (OpCode::OpCurrentClosure, vec![]),
+                    (OpCode::OpGetLocal, vec![0]),
+                    (OpCode::OpConstant, vec![0]),
+                    (OpCode::OpSub, vec![]),
+                    (OpCode::OpCall, vec![1]),
+                    (OpCode::OpReturnValue, vec![]),
+                ]),
+                num_locals: 1,
+                num_parameters: 1,
+            },
+            Value::Int(1),
+            Value::CompiledFunction { instructions: Instructions::from(
+                vec![
+                    (OpCode::OpClosure, vec![1, 0]),
+                    (OpCode::OpSetLocal, vec![0]),
+                    (OpCode::OpGetLocal, vec![0]),
+                    (OpCode::OpConstant, vec![2]),
+                    (OpCode::OpCall, vec![1]),
+                    (OpCode::OpReturnValue, vec![]),
+                ]
+
+            ), num_locals: 1, num_parameters: 0 }
+        ], &[
+                (OpCode::OpClosure, &[3,0]),
+                (OpCode::OpSetGlobal, &[0]),
+                (OpCode::OpGetGlobal, &[0]),
+                (OpCode::OpCall, &[0]),
+                (OpCode::OpPop, &[]),
+            ])
     ];
 
     run_compiler_test(tests);
